@@ -87,6 +87,20 @@
 
     async function onBoardUpdated() {
         try {
+            // First, let the UI PlaybackEngine consume well-known presentation events (PLAYBACK_EVENTS / SCHEDULE_CPU_TURN)
+            try {
+                const Playback = (typeof require === 'function') ? require('../ui/playback-engine') : (typeof window !== 'undefined' ? window.PlaybackEngine : null);
+                if (Playback && typeof Playback.playPresentationEvents === 'function') {
+                    try {
+                        await Playback.playPresentationEvents(cardState, {
+                            AnimationEngine: (typeof window !== 'undefined' ? window.AnimationEngine : null),
+                            scheduleCpuTurn: (delay, cb) => setTimeout(cb, delay),
+                            onSchedule: (ev) => { if (typeof processCpuTurn === 'function') processCpuTurn(); }
+                        });
+                    } catch (e) { /* continue to event fallback */ }
+                }
+            } catch (e) { /* ignore require errors in some envs */ }
+
             // Pull presentation events from CardLogic (best-effort)
             let events = [];
             if (typeof CardLogic !== 'undefined' && typeof CardLogic.flushPresentationEvents === 'function') {
@@ -94,6 +108,7 @@
                     events = CardLogic.flushPresentationEvents(cardState) || [];
                 } catch (e) { events = []; }
             }
+
             // Fallback: if flush returned nothing, consume the persistent copy saved by emitPresentationEvent
             console.log('[PRESENTATION_DEBUG] persistLen', cardState && cardState._presentationEventsPersist ? cardState._presentationEventsPersist.length : 0);
             if ((!events || events.length === 0) && cardState && Array.isArray(cardState._presentationEventsPersist) && cardState._presentationEventsPersist.length) {
