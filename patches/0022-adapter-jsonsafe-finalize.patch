@@ -1,0 +1,24 @@
+Subject: 0022 - pipeline_ui_adapter: finalize JSON-safe adapter + add JSON-safety test
+
+Summary:
+- Confirmed `game/turn/pipeline_ui_adapter.js` is JSON-safe: no Map/Set usage and adapter does not populate `after` from a final snapshot Map. It builds per-target `after` as plain objects derived from event fields.
+- Added unit test `tests/unit/pipeline_ui_adapter_jsonsafe.test.js` that asserts outputs are JSON-safe (no Map/Set, `after` is plain object with primitive fields).
+
+Root evidence (scans):
+- No Map usage in adapter: scan of `game/turn/pipeline_ui_adapter.js` shows no `new Map(` / `Map(` (file content at current HEAD).
+- Adapter avoids snapshot-derived `after`: code path in `mapToPlaybackEvents` explicitly comments and uses event-sourced fields to populate `t.after` (see `game/turn/pipeline_ui_adapter.js` lines ~86-110).
+  - e.g. `t.after = { color: (t.ownerAfter === 'black') ? 1 : -1, special: (ev.meta && ev.meta.special) || null, timer: (ev.meta && ev.meta.timer) || null }` (file:line ~98)
+
+Tests added:
+- `tests/unit/pipeline_ui_adapter_jsonsafe.test.js` — verifies mapToPlaybackEvents returns objects only (no Map/Set) and per-target `after` is a plain object with primitive properties.
+
+Verification:
+- `npm run test:jest -i tests/unit/pipeline_ui_adapter_jsonsafe.test.js` → PASS
+- `npm run test:jest -i` → full suite: PASS (83 passed, 2 skipped; some open-handle warnings unrelated)
+- `npm run check:ui-writers` → PASS
+
+Notes:
+- No changes were required to `animation-engine.js` or other visual writers; they already consume `t.after` as a plain object (see `ui/animation-engine.js` references at lines ~222-342).
+- If later we remove per-target `after` entirely, we'd need coordinated updates to visual writers; for now per-target `after` is minimal and JSON-safe.
+
+END PATCH

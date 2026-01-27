@@ -1,0 +1,32 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      if (typeof initCardState === 'function') {
+-        console.log('[FUZZ_DEBUG] calling initCardState to ensure cardState exists');
+-        // Ensure SeededPRNG exists so initCardState can create a PRNG
+-        await page.evaluate(() => {
+-          try {
+-            if (typeof SeededPRNG === 'undefined' || !SeededPRNG || typeof SeededPRNG.createPRNG !== 'function') {
+-              window.SeededPRNG = { createPRNG: (seed) => ({ _seed: seed, random: () => 0, shuffle: (arr) => arr, nextInt: () => 0, getState: () => ({ seed, calls: 0 }), restoreState: () => {} }) };
+-              console.log('[FUZZ_DEBUG] injected minimal SeededPRNG');
+-            }
+-            if (typeof initCardState === 'function') initCardState();
+-          } catch (e) { console.error('[FUZZ_DEBUG] initCardState threw', e && e.message); }
+-        });
+-      }
++      if (typeof initCardState === 'function') {
++        console.log('[FUZZ_DEBUG] calling initCardState to ensure cardState exists');
++        // Ensure SeededPRNG exists so initCardState can create a PRNG
++        await page.evaluate(() => {
++          try {
++            if (typeof SeededPRNG === 'undefined' || !SeededPRNG || typeof SeededPRNG.createPRNG !== 'function') {
++              window.SeededPRNG = { createPRNG: (seed) => ({ _seed: seed, random: () => 0, shuffle: (arr) => arr, nextInt: () => 0, getState: () => ({ seed, calls: 0 }), restoreState: () => {} }) };
++              console.log('[FUZZ_DEBUG] injected minimal SeededPRNG');
++            }
++            if (typeof initCardState === 'function') initCardState();
++          } catch (e) { console.error('[FUZZ_DEBUG] initCardState threw', e && e.message); }
++        });
++        // Small wait for init to settle
++        await page.waitForTimeout(10);
++      }
+*** End Patch

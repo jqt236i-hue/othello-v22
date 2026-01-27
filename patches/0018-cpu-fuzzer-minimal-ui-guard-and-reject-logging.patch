@@ -1,0 +1,36 @@
+*** Begin Patch
+*** Update File: ui/diff-renderer.js
+@@
+-    if (!gameState || !cardState) {
++    if (!gameState || !cardState) {
+         console.warn('[DiffRenderer] Skipping buildCurrentCellState - gameState/cardState not ready');
+@@
+         return s;
+     }
+-    // Additional defensives: ensure arrays used by CardLogic exist to avoid .filter/.map throws
+-    if (!Array.isArray(cardState.specialStones)) cardState.specialStones = [];
+-    if (!Array.isArray(cardState.bombs)) cardState.bombs = [];
++    // Additional defensives: ensure arrays used by CardLogic exist to avoid .filter/.map throws
++    if (!Array.isArray(cardState.specialStones)) cardState.specialStones = [];
++    if (!Array.isArray(cardState.bombs)) cardState.bombs = [];
+*** End Patch
+*** Begin Patch
+*** Update File: game/move-executor.js
+@@
+-    if (res.ok === false) {
+-        console.warn('[MoveExecutor] Action rejected:', res.rejectedReason);
+-        // Do not record, do not increment turnIndex
+-        // Important: reset isProcessing to allow auto-loop to continue
+-        isProcessing = false;
+-        emitBoardUpdate();
+-        return;
+-    }
++    if (res.ok === false) {
++        console.warn('[MoveExecutor] Action rejected:', res.rejectedReason, 'events:', JSON.stringify(res.events || res, null, 2));
++        // Do not record, do not increment turnIndex
++        // Important: reset isProcessing to allow auto-loop to continue
++        isProcessing = false;
++        emitBoardUpdate();
++        return;
++    }
+*** End Patch

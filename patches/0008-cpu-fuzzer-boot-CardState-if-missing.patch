@@ -1,0 +1,21 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      const move = await page.evaluate(() => {
+-        const gs = window.gameState;
+-        const cs = window.cardState;
+-        try {
+-          const legal = window.getLegalMoves ? window.getLegalMoves(gs, window.BLACK, window.CardLogic.getCardContext(cs)) : [];
+-          return legal && legal.length ? legal[0] : null;
+-        } catch (e) { return null; }
+-      });
++      const move = await page.evaluate(() => {
++        const gs = window.gameState;
++        // Ensure a minimal cardState exists so getCardContext doesn't throw during early-initialization pages
++        const cs = window.cardState || ((typeof window.CardLogic !== 'undefined' && typeof window.CardLogic.createCardState === 'function') ? window.CardLogic.createCardState({ random: () => 0 }) : { charge: { black: 0, white: 0 }, pendingEffectByPlayer: { black: null, white: null }, hands: { black: [], white: [] }, hasUsedCardThisTurnByPlayer: { black: false, white: false } });
++        try {
++          const legal = window.getLegalMoves ? window.getLegalMoves(gs, window.BLACK, window.CardLogic.getCardContext(cs)) : [];
++          return legal && legal.length ? legal[0] : null;
++        } catch (e) { return null; }
++      });
+*** End Patch

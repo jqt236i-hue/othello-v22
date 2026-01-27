@@ -1,0 +1,10 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      console.log(`[FUZZ_DEBUG] stage3: wait full UI APIs & board render (timeout=${timeoutMs})`);
+-      // relax: don't require an UI click handler to be present; requiring getLegalMoves + board/gameState is enough
+-      await page.waitForFunction(() => !!(window.getLegalMoves && (document.querySelector('.board') || (window.gameState && typeof window.gameState.turnNumber === 'number'))), { timeout: timeoutMs });
++      console.log(`[FUZZ_DEBUG] stage3: wait full UI APIs & board render (timeout=${timeoutMs})`);
++      // relax: don't require an UI click handler to be present; requiring getLegalMoves + board/gameState is enough
++      await page.waitForFunction(() => !!(window.getLegalMoves && (document.querySelector('.board') || (window.gameState && typeof window.gameState.turnNumber === 'number'))), { timeout: timeoutMs });
+*** End Patch

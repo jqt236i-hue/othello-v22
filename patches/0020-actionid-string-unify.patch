@@ -1,0 +1,26 @@
+Subject: 0020 - Unify actionId as string (ActionSchema)
+
+Summary:
+- Remove numeric actionId assumptions from ActionSchema by requiring string actionId and forbidding numeric auto-generation.
+- Keep deprecated numeric generator stubs that throw, to prevent accidental use and confirm no call sites remain.
+
+Evidence (numeric assumptions in ActionSchema):
+- actionIdCounter / numeric generator: [game/schema/action.js](game/schema/action.js#L20-L33)
+- createAction generated numeric actionId: [game/schema/action.js](game/schema/action.js#L45-L63)
+- validateAction required number: [game/schema/action.js](game/schema/action.js#L76-L90)
+- normalizeAction auto-generated numeric actionId: [game/schema/action.js](game/schema/action.js#L142-L156)
+
+Changes:
+- createAction now requires a non-empty string actionId in payload; no numeric auto-generation.
+- validateAction enforces non-empty string actionId.
+- normalizeAction requires string actionId and throws if missing (no silent numeric fallback).
+- generateActionId / actionIdCounter marked @deprecated and generateActionId throws if called.
+
+Files changed:
+- M game/schema/action.js
+
+How to verify:
+- npm run test:jest -i
+- npm run check:ui-writers
+
+END PATCH

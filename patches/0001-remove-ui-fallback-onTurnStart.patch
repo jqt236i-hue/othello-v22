@@ -1,0 +1,22 @@
+*** Begin Patch
+*** Update File: game/turn-manager.js
+@@
+-    } else {
+-        console.error('[TURN-START] TurnPipelinePhases.applyTurnStartPhase not available; turn-start skipped');
+-        // NOTE: Do NOT call CardLogic turn-start writers from UI modules. Turn pipeline is the single writer of rule
+-        // state and should implement turn-start behavior (see game/turn/turn_pipeline_phases.js).
+-    }
++    } else {
++        // Fail-fast: TurnPipelinePhases must be present in production (pipeline-only policy)
++        // Browser builds without the pipeline are misconfigured; throw to surface the issue immediately.
++        throw new Error('TurnPipelinePhases not available (pipeline-only policy)');
++    }
+*** End Patch
+*** Update File: tests/unit/game/turn-manager.noanim.test.js
+@@
+-        // Clean up the injected TurnPipelinePhases
+-        delete global.TurnPipelinePhases;
++        // Clean up the injected TurnPipelinePhases and Core shim to avoid test contamination
++        delete global.TurnPipelinePhases;
++        delete global.Core;
+*** End Patch

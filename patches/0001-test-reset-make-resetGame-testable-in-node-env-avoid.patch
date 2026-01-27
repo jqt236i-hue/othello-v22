@@ -1,0 +1,86 @@
+From 509ce5a37facffc32ff85cce4471ce35581a19c5 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:29:38 +0900
+Subject: [PATCH] test(reset): make resetGame testable in node env; avoid
+ watchdog in tests
+
+---
+ game/turn-manager.js                          | 39 ++++++++++---------
+ .../reset_game_clears_action_manager.test.js  |  6 +++
+ 2 files changed, 27 insertions(+), 18 deletions(-)
+
+diff --git a/game/turn-manager.js b/game/turn-manager.js
+index 66f4fc1..04fd5b0 100644
+--- a/game/turn-manager.js
++++ b/game/turn-manager.js
+@@ -345,26 +345,29 @@ async function onTurnStart(player) {
+ let lastFlagActiveTime = null;
+ const WATCHDOG_TIMEOUT_MS = 10000;
+ 
+-setInterval(() => {
+-    if (isAnimationInProgress()) {
+-        const now = Date.now();
+-        if (lastFlagActiveTime === null) {
+-            lastFlagActiveTime = now;
+-        } else if (now - lastFlagActiveTime > WATCHDOG_TIMEOUT_MS) {
+-            console.warn('[WATCHDOG] Flags stuck for too long. Force clearing...', {
+-                isProcessing,
+-                isCardAnimating
+-            });
+-            isProcessing = false;
+-            isCardAnimating = false;
++// Do not start watchdog during Jest tests (avoids open timer handle)
++if (!(typeof process !== 'undefined' && process.env && process.env.JEST_WORKER_ID)) {
++    setInterval(() => {
++        if (isAnimationInProgress()) {
++            const now = Date.now();
++            if (lastFlagActiveTime === null) {
++                lastFlagActiveTime = now;
++            } else if (now - lastFlagActiveTime > WATCHDOG_TIMEOUT_MS) {
++                console.warn('[WATCHDOG] Flags stuck for too long. Force clearing...', {
++                    isProcessing,
++                    isCardAnimating
++                });
++                isProcessing = false;
++                isCardAnimating = false;
++                lastFlagActiveTime = null;
++                addLog('警告: 処理が長時間停滞したため強制解除しました');
++                emitBoardUpdate();
++            }
++        } else {
+             lastFlagActiveTime = null;
+-            addLog('警告: 処理が長時間停滞したため強制解除しました');
+-            emitBoardUpdate();
+         }
+-    } else {
+-        lastFlagActiveTime = null;
+-    }
+-}, 1000);
++    }, 1000);
++}
+ 
+ // Export global
+ window.onTurnStart = onTurnStart;
+diff --git a/tests/unit/reset_game_clears_action_manager.test.js b/tests/unit/reset_game_clears_action_manager.test.js
+index 6bb3999..2c4531e 100644
+--- a/tests/unit/reset_game_clears_action_manager.test.js
++++ b/tests/unit/reset_game_clears_action_manager.test.js
+@@ -23,9 +23,15 @@ test('resetGame resets and clears ActionManager storage', () => {
+   AMModule.ActionManager.recordAction({ actionId: 'test-1', turnIndex: 0 });
+   expect(AMModule.ActionManager.getActionCount()).toBeGreaterThan(0);
+ 
++  // Provide minimal globals expected by resetGame
++  global.cpuSmartness = { black: 1, white: 1 };
++
+   // Call resetGame (exports for tests)
+   TurnManager.resetGame();
+ 
++  // Cleanup test globals
++  delete global.cpuSmartness;
++
+   // After reset, action count should be 0 and storage cleared
+   expect(AMModule.ActionManager.getActionCount()).toBe(0);
+   const stored = localStorage.getItem(AMModule.ActionManager._storageKey);
+-- 
+2.50.1.windows.1
+

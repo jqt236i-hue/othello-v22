@@ -1,0 +1,13 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-          let ctx = {};
+-          try { ctx = (window.CardLogic && typeof window.CardLogic.getCardContext === 'function') ? window.CardLogic.getCardContext(cs) : {}; } catch (e) { ctx = {}; }
++          let ctx = {};
++          try { if (window.cardState) { ctx = (window.CardLogic && typeof window.CardLogic.getCardContext === 'function') ? window.CardLogic.getCardContext(cs) : {}; } else { ctx = {}; } } catch (e) { ctx = {}; }
+@@
+-                let ctx2 = {};
+-                try { ctx2 = (window.CardLogic && typeof window.CardLogic.getCardContext === 'function') ? window.CardLogic.getCardContext(cs2) : {}; } catch (e) { ctx2 = {}; }
++                let ctx2 = {};
++                try { if (window.cardState) { ctx2 = (window.CardLogic && typeof window.CardLogic.getCardContext === 'function') ? window.CardLogic.getCardContext(cs2) : {}; } else { ctx2 = {}; } } catch (e) { ctx2 = {}; }
+*** End Patch

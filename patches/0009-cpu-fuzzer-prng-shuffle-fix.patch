@@ -1,0 +1,6 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-        const cs = window.cardState || ((typeof window.CardLogic !== 'undefined' && typeof window.CardLogic.createCardState === 'function') ? window.CardLogic.createCardState({ random: () => 0 }) : { charge: { black: 0, white: 0 }, pendingEffectByPlayer: { black: null, white: null }, hands: { black: [], white: [] }, hasUsedCardThisTurnByPlayer: { black: false, white: false } });
++        const cs = window.cardState || ((typeof window.CardLogic !== 'undefined' && typeof window.CardLogic.createCardState === 'function') ? window.CardLogic.createCardState({ shuffle: arr => arr, random: () => 0 }) : { charge: { black: 0, white: 0 }, pendingEffectByPlayer: { black: null, white: null }, hands: { black: [], white: [] }, hasUsedCardThisTurnByPlayer: { black: false, white: false } });
+*** End Patch

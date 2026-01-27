@@ -1,0 +1,9 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-          // Use the UI-level getLegalMoves wrapper: it accepts (state, protection, perma) but defaults to using current player
+-          const legal = window.getLegalMoves ? window.getLegalMoves(gs) : [];
++          // Use the UI-level getLegalMoves wrapper: it accepts (state, protection, perma) and will compute for current player
++          const legal = window.getLegalMoves ? window.getLegalMoves(gs) : [];
+           return legal && legal.length ? legal[0] : null;
+*** End Patch

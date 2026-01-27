@@ -1,0 +1,12 @@
+{
+  "title": "Presentation Events Migration",
+  "description": "Tasks to migrate board mutations to BoardOps and introduce presentationEvents",
+  "tasks": [
+    { "id": 1, "title": "Finalize BoardOps API", "assignee": null, "estimate_days": 2 },
+    { "id": 2, "title": "Migrate cards to use BoardOps (batch)", "assignee": null, "estimate_days": 7 },
+    { "id": 3, "title": "Add/deduplicate tests for destroyed/spawn/change/move", "assignee": null, "estimate_days": 3 },
+    { "id": 4, "title": "Implement presentation-events Playwright checks", "assignee": null, "estimate_days": 3 },
+    { "id": 5, "title": "Add CI workflow for presentation-events", "assignee": null, "estimate_days": 2 },
+    { "id": 6, "title": "Docs: presentation_events_spec.md and PR checklist", "assignee": null, "estimate_days": 1 }
+  ]
+}

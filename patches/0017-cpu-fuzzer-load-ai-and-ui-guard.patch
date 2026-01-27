@@ -1,0 +1,29 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      const aisMissing = logs.some(l => l.text && /AISystem is not loaded/.test(l.text));
+-      if (aisMissing) {
++      const aisMissing = logs.some(l => l.text && /AISystem is not loaded/.test(l.text));
++      if (aisMissing) {
+@@
+-        // If still missing, and allowed, inject a lightweight mock
+-        const aisNow = await page.evaluate(() => (typeof AISystem !== 'undefined'));
+-        if (!aisNow && injectMock) {
++        // If still missing, and allowed, inject a lightweight mock
++        const aisNow = await page.evaluate(() => (typeof AISystem !== 'undefined'));
++        if (!aisNow && injectMock) {
+           console.log('Injecting mock AISystem into page (injectMock=true)');
+           await page.evaluate(() => {
+             window.AISystem = {
+               selectMove(gameState, cardState, candidateMoves) {
+                 return candidateMoves[Math.floor(Math.random() * candidateMoves.length)];
+               },
+               selectCardToUse() { return null; }
+             };
+           });
+         }
+@@
+-        if (!aisFinal) {
++        if (!aisFinal) {
+           console.warn('AISystem not loaded in page after attempts; skipping iteration as environment issue');
+*** End Patch

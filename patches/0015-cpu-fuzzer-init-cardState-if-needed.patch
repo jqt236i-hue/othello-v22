@@ -1,0 +1,18 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+       console.log(`[FUZZ_DEBUG] stage3: wait full UI APIs & board render (timeout=${timeoutMs})`);
+       // relax: don't require an UI click handler to be present; requiring getLegalMoves + board/gameState is enough
+       await page.waitForFunction(() => !!(window.getLegalMoves && (document.querySelector('.board') || (window.gameState && typeof window.gameState.turnNumber === 'number'))), { timeout: timeoutMs });
+ 
+-      // Ensure cardState is initialized so CardLogic.getCardContext(cardState) won't throw during rendering
+-      if (typeof initCardState === 'function') {
+-        console.log('[FUZZ_DEBUG] calling initCardState to ensure cardState exists');
+-        await page.evaluate(() => { try { if (typeof initCardState === 'function') initCardState(); } catch(e) { console.error('[FUZZ_DEBUG] initCardState threw', e && e.message); } });
+-      }
++      // Ensure cardState is initialized so CardLogic.getCardContext(cardState) won't throw during rendering
++      if (typeof initCardState === 'function') {
++        console.log('[FUZZ_DEBUG] calling initCardState to ensure cardState exists');
++        await page.evaluate(() => { try { if (typeof initCardState === 'function') initCardState(); } catch(e) { console.error('[FUZZ_DEBUG] initCardState threw', e && e.message); } });
++      }
+*** End Patch

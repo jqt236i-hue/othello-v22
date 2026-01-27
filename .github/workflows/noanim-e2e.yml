@@ -1,0 +1,27 @@
+name: No-Animation E2E
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-noanim-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run unit tests (jest)
+        run: npm run test:jest
+      - name: Run E2E (no-anim)
+        env:
+          NOANIM: '1'
+        run: npm run test:e2e:noanim

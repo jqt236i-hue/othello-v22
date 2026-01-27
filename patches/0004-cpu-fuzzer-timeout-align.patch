@@ -1,0 +1,9 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      await page.goto(indexPath, { waitUntil: 'load' });
+-      await page.waitForFunction(() => !!(window.addLog && window.getLegalMoves && window.handleCellClick), { timeout: 20000 });
++      await page.goto(indexPath, { waitUntil: 'load' });
++      // Use the user-specified timeoutMs so the fuzzer respects the CLI flag
++      await page.waitForFunction(() => !!(window.addLog && window.getLegalMoves && window.handleCellClick), { timeout: timeoutMs });
+*** End Patch

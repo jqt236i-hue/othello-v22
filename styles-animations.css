@@ -1,0 +1,23 @@
+/* Card Animations */
+
+@keyframes card-fade-in {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.card-fade-in {
+    animation: card-fade-in 0.5s ease-out forwards;
+}
+
+/* Prevent "flash then fade" by allowing new cards to be rendered hidden before the fade-in starts. */
+.card-fade-prep {
+    opacity: 0;
+    transform: scale(0.8) translateY(10px);
+}

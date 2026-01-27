@@ -1,0 +1,28 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-        try {
+-          // Prefer direct CoreLogic.getLegalMoves if available (safer), fall back to UI wrapper
+-          let legal = [];
+-          try {
+-            if (typeof CoreLogic !== 'undefined' && typeof CoreLogic.getLegalMoves === 'function') {
+-              legal = CoreLogic.getLegalMoves(gs, gs.currentPlayer, {});
+-            } else {
+-              legal = window.getLegalMoves ? window.getLegalMoves(gs, [], []) : [];
+-            }
+-          } catch (e) { legal = []; }
+-          return legal && legal.length ? legal[0] : null;
+-        } catch (e) { return null; }
++        try {
++          // Prefer direct CoreLogic.getLegalMoves if available (safer), fall back to UI wrapper
++          let legal = [];
++          try {
++            if (typeof CoreLogic !== 'undefined' && typeof CoreLogic.getLegalMoves === 'function') {
++              legal = CoreLogic.getLegalMoves(gs, gs.currentPlayer, {});
++            } else {
++              legal = window.getLegalMoves ? window.getLegalMoves(gs, [], []) : [];
++            }
++          } catch (e) { legal = []; }
++          return legal && legal.length ? legal[0] : null;
++        } catch (e) { return null; }
+*** End Patch

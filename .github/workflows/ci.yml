@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [ main, master ]
+
+jobs:
+  unit-normal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Run UI writer static check
+        run: npm run check:ui-writers
+      - name: Run unit tests (normal)
+        run: npm run test:jest
+
+  unit-noanim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Run unit tests (no-anim)
+        env:
+          NOANIM: '1'
+          DISABLE_ANIMATIONS: '1'
+        run: npm run test:jest:noanim
+
+  e2e-noanim:
+    runs-on: ubuntu-latest
+    needs: [unit-normal, unit-noanim]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run E2E (no-anim)
+        env:
+          NOANIM: '1'
+        run: npm run test:e2e:noanim
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: [unit-normal, unit-noanim]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      - name: Run E2E smoke (normal-mode)
+        run: npm run test:e2e

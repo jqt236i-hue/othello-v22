@@ -1,0 +1,18 @@
+*** Begin Patch
+*** Update File: ONLINE_REFACTOR_PLAN.md
+@@
+ ### 0.3 Build gates
+ Must match `othello_v2/package.json` scripts:
+@@
+ - `npm run check:consistency` (catalog/rulebook consistency) => `node scripts/check_consistency.js`
++
++### 0.4 Evidence anchors (DoD sync) ⚓️
++- ✅ `game/ai/level-system.js` added and served — patch `patches/0019-fix-browser-init-empty-board.patch` (repro: `scripts/debug_browser_init.js`)
++- ✅ `game/schema/action.js` enforces string `actionId` — patch `patches/0020-actionid-string-unify.patch` (tests updated)
++- ✅ `pipeline_ui_adapter` JSON-safety verified — test `tests/unit/pipeline_ui_adapter_jsonsafe.test.js`, patch `patches/0022-adapter-jsonsafe-finalize.patch`
++- ✅ Turn-manager test flake fixed — `tests/unit/game/turn-manager.noanim.test.js`, patch `patches/0021-fix-turn-manager-noanim-test-flags.patch`
++- ✅ Static gate `npm run check:ui-writers` passes (prevents UI-side rule mutation)
++- ✅ CI verification: short CPU fuzz runs and Jest tests tracked in `.github/workflows/cpu-fuzz.yml` and `.github/workflows/ci.yml`
++
++> Minimal anchors for the current DoD. Add further patch/test references here as tasks complete.
+*** End Patch

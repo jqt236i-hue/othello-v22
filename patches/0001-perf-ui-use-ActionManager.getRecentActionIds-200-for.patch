@@ -1,0 +1,33 @@
+From 937e8416c6d689b8ec6b4f9de85f471c09be1053 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:27:23 +0900
+Subject: [PATCH] perf(ui): use ActionManager.getRecentActionIds(200) for
+ previousActionIds to limit payload
+
+---
+ game/turn/pipeline_ui_adapter.js | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/game/turn/pipeline_ui_adapter.js b/game/turn/pipeline_ui_adapter.js
+index 44b2391..6f077ad 100644
+--- a/game/turn/pipeline_ui_adapter.js
++++ b/game/turn/pipeline_ui_adapter.js
+@@ -117,9 +117,13 @@
+ 
+         // Build options for applyTurnSafe: include current state version and previous action ids if ActionManager is available
+         const options = {};
+-        if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager && typeof ActionManager.ActionManager.getActions === 'function') {
++        if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager) {
+             try {
+-                options.previousActionIds = ActionManager.ActionManager.getActions().map(a => a.actionId).filter(Boolean);
++                if (typeof ActionManager.ActionManager.getRecentActionIds === 'function') {
++                    options.previousActionIds = ActionManager.ActionManager.getRecentActionIds(200);
++                } else if (typeof ActionManager.ActionManager.getActions === 'function') {
++                    options.previousActionIds = ActionManager.ActionManager.getActions().map(a => a.actionId).filter(Boolean);
++                }
+             } catch (e) { /* ignore */ }
+         }
+         if (cardState && typeof cardState.turnIndex === 'number') {
+-- 
+2.50.1.windows.1
+

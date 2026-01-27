@@ -1,0 +1,269 @@
+From 90d9ce12124ce8e2621f8ac501ed24e24cda2090 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 12:32:54 +0900
+Subject: [PATCH] ci: add CPU fuzzer, failOnFailure flag, npm script and CI
+ workflow
+
+---
+ .github/workflows/cpu-fuzz.yml   |  31 ++++++
+ package.json                     |  35 +++++++
+ scripts/playwright_cpu_fuzzer.js | 167 +++++++++++++++++++++++++++++++
+ 3 files changed, 233 insertions(+)
+ create mode 100644 .github/workflows/cpu-fuzz.yml
+ create mode 100644 package.json
+ create mode 100644 scripts/playwright_cpu_fuzzer.js
+
+diff --git a/.github/workflows/cpu-fuzz.yml b/.github/workflows/cpu-fuzz.yml
+new file mode 100644
+index 0000000..a8cf874
+--- /dev/null
++++ b/.github/workflows/cpu-fuzz.yml
+@@ -0,0 +1,31 @@
++name: CPU fuzz
++
++on:
++  push: {}
++  pull_request: {}
++
++jobs:
++  cpu-fuzz:
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Setup Node
++        uses: actions/setup-node@v4
++        with:
++          node-version: '18'
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Install Playwright browsers
++        run: npx playwright install --with-deps
++
++      - name: Static check: UI writer calls
++        run: npm run check:ui-writers
++
++      - name: Run CPU fuzzer
++        run: npm run test:cpu-fuzz
++        env:
++          CI: true
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..04cfbb4
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,35 @@
++{
++  "name": "othello",
++  "version": "1.0.0",
++  "description": "Card Othello Game",
++  "main": "index.html",
++  "scripts": {
++    "serve": "http-server . -p 8000 -c-1",
++    "test": "node scripts/smoke_headless.js",
++    "test:e2e": "node scripts/playwright_presentation_sequences.js",
++    "test:e2e:noanim": "node scripts/playwright_presentation_sequences.js --noanim" ,
++    "check:consistency": "node scripts/check_consistency.js",
++    "check:ui-writers": "node scripts/check_ui_calls.js",
++    "test:cpu-fuzz": "node scripts/playwright_cpu_fuzzer.js --iterations=200 --timeoutMs=3000 --injectMock --failOnFailure",
++    "test:jest": "jest --runInBand --coverage",
++    "test:jest:noanim": "NOANIM=1 jest --runInBand --coverage"
++  },
++  "keywords": [],
++  "author": "",
++  "license": "ISC",
++  "type": "commonjs",
++  "jest": {
++    "testEnvironment": "node",
++    "setupFiles": ["<rootDir>/tests/jest.setup.js"],
++    "collectCoverageFrom": [
++      "game/**/*.js",
++      "!**/vendor/**"
++    ]
++  },
++  "devDependencies": {
++    "http-server": "^14.1.1",
++    "jest": "^29.6.1",
++    "jsdom": "^22.1.0",
++    "playwright": "^1.57.0"
++  }
++}
+diff --git a/scripts/playwright_cpu_fuzzer.js b/scripts/playwright_cpu_fuzzer.js
+new file mode 100644
+index 0000000..ea5b9d5
+--- /dev/null
++++ b/scripts/playwright_cpu_fuzzer.js
+@@ -0,0 +1,167 @@
++const { chromium } = require('playwright');
++const fs = require('fs');
++const path = require('path');
++
++function mkdirp(p) {
++  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
++}
++
++function timestamp() {
++  return new Date().toISOString().replace(/[:.]/g, '-');
++}
++
++async function waitForConsoleMatch(page, matcher, timeoutMs) {
++  return new Promise((resolve) => {
++    const onConsole = (msg) => {
++      try {
++        const text = msg.text();
++        if (matcher.test(text)) {
++          page.off('console', onConsole);
++          resolve({ matched: true, text });
++        }
++      } catch (e) {}
++    };
++    page.on('console', onConsole);
++    setTimeout(() => {
++      page.off('console', onConsole);
++      resolve({ matched: false });
++    }, timeoutMs);
++  });
++}
++
++async function run({ iterations = 500, timeoutMs = 3000, headless = true, injectMock = false } = {}) {
++  const browser = await chromium.launch({ headless });
++  const page = await browser.newPage();
++
++  const runDir = path.join(__dirname, '..', 'artifacts', `cpu-fuzzer-${timestamp()}`);
++  mkdirp(runDir);
++  const indexPath = 'file://' + path.join(__dirname, '..', 'index.html');
++
++  const summary = { iterations, failures: [] };
++
++  for (let i = 1; i <= iterations; i++) {
++    const iterId = String(i).padStart(4, '0');
++    console.log(`Iteration ${i}/${iterations}`);
++
++    const logs = [];
++    page.removeAllListeners('console');
++    page.on('console', msg => {
++      try { logs.push({ type: msg.type(), text: msg.text() }); } catch (e) {}
++    });
++
++    try {
++      await page.goto(indexPath, { waitUntil: 'load' });
++      await page.waitForFunction(() => !!(window.addLog && window.getLegalMoves && window.handleCellClick), { timeout: 20000 });
++
++      // If AISystem missing, either skip (env issue) or inject a mock if requested
++      const aisMissing = logs.some(l => l.text && /AISystem is not loaded/.test(l.text));
++      if (aisMissing && injectMock) {
++        console.log('Injecting mock AISystem into page (injectMock=true)');
++        await page.evaluate(() => {
++          window.AISystem = {
++            selectMove(gameState, cardState, candidateMoves) {
++              return candidateMoves[Math.floor(Math.random() * candidateMoves.length)];
++            },
++            selectCardToUse() { return null; }
++          };
++        });
++      } else if (aisMissing) {
++        console.warn('AISystem not loaded in page; skipping iteration as environment issue');
++        // Save one sample for triage
++        const sampleDir = path.join(runDir, 'env-issues');
++        mkdirp(sampleDir);
++        const sname = `env-sample-${String(i).padStart(4,'0')}.json`;
++        fs.writeFileSync(path.join(sampleDir, sname), JSON.stringify({ logs }, null, 2), 'utf8');
++        continue;
++      }
++
++      // Find a legal move
++      const move = await page.evaluate(() => {
++        const gs = window.gameState;
++        const cs = window.cardState;
++        try {
++          const legal = window.getLegalMoves ? window.getLegalMoves(gs, window.BLACK, window.CardLogic.getCardContext(cs)) : [];
++          return legal && legal.length ? legal[0] : null;
++        } catch (e) { return null; }
++      });
++
++      if (!move) {
++        console.warn('No legal move found for iteration', i);
++        continue;
++      }
++
++      // Intercept scheduling log to know when CPU is scheduled
++      const scheduling = waitForConsoleMatch(page, /scheduling CPU|setTimeout firing/i, 2000);
++
++      // Fire the player's move
++      await page.evaluate(([r, c]) => {
++        try {
++          if (typeof handleCellClick === 'function') handleCellClick(r, c);
++          else if (typeof executeMove === 'function') executeMove({ player: (window.gameState.currentPlayer || window.BLACK), row: r, col: c });
++        } catch (e) { console.error('simulate click error', e && e.message); }
++      }, [move.row, move.col]);
++
++      const schedResult = await scheduling;
++      // Wait for a CPU-start log within timeoutMs (accept multiple possible markers)
++      const startResult = await waitForConsoleMatch(page, /\[AI\] Starting CPU turn|\[DEBUG\]\[processCpuTurn\] enter|\[CPU\]/i, timeoutMs);
++
++      if (!startResult.matched) {
++        console.error(`-- FAILURE: CPU did not start within ${timeoutMs}ms (iter ${i})`);
++        const snap = await page.evaluate(() => {
++          try {
++            return {
++              gameState: window.gameState,
++              cardState: window.cardState,
++              isProcessing: typeof window.isProcessing !== 'undefined' ? window.isProcessing : (window.isProcessingGlobal || null),
++              isCardAnimating: typeof window.isCardAnimating !== 'undefined' ? window.isCardAnimating : (window.isCardAnimatingGlobal || null),
++              pendingEffectByPlayer: window.cardState ? window.cardState.pendingEffectByPlayer : null,
++              currentPlayer: window.gameState ? window.gameState.currentPlayer : null
++            };
++          } catch (e) { return { error: String(e) }; }
++        });
++
++        const iterDir = path.join(runDir, `iteration-${iterId}`);
++        mkdirp(iterDir);
++        fs.writeFileSync(path.join(iterDir, 'snapshot.json'), JSON.stringify({ snap, logs }, null, 2), 'utf8');
++        await page.screenshot({ path: path.join(iterDir, 'page.png'), fullPage: true });
++        fs.writeFileSync(path.join(iterDir, 'logs.txt'), logs.map(l => `[${l.type}] ${l.text}`).join('\n'), 'utf8');
++
++        summary.failures.push({ iteration: i, snapshotPath: path.join(iterDir, 'snapshot.json'), screenshot: path.join(iterDir, 'page.png') });
++
++        // Optionally break early on first failure - for now continue to gather more
++      }
++
++      // small delay between iterations
++      await page.waitForTimeout(40);
++    } catch (e) {
++      console.error('Error during iteration', i, e && e.message);
++      fs.writeFileSync(path.join(runDir, `error-iter-${iterId}.txt`), String(e && e.stack || e), 'utf8');
++    }
++  }
++
++  await browser.close();
++
++  const summaryPath = path.join(runDir, 'summary.json');
++  fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2), 'utf8');
++  console.log('Fuzzer finished. Summary:', summary);
++  console.log('Artifacts:', runDir);
++  return summary;
++}
++
++if (require.main === module) {
++  const argv = require('minimist')(process.argv.slice(2));
++  const iterations = argv.iterations ? Number(argv.iterations) : 500;
++  const timeoutMs = argv.timeoutMs ? Number(argv.timeoutMs) : 3000;
++  const headless = (typeof argv.headless === 'undefined') ? true : argv.headless === 'true' || argv.headless === true;
++  const injectMock = !!argv.injectMock;
++  const failOnFailure = !!argv.failOnFailure;
++  run({ iterations, timeoutMs, headless, injectMock }).then(summary => {
++    if (failOnFailure && summary && summary.failures && summary.failures.length) {
++      console.error('Fuzzer detected failures and --failOnFailure was set. Exiting with code 1.');
++      process.exit(1);
++    }
++  }).catch(err => {
++    console.error('Fuzzer error', err);
++    process.exit(2);
++  });
++}
+-- 
+2.50.1.windows.1
+

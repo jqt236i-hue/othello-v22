@@ -1,0 +1,25 @@
+Subject: 0021 - Fix turn-manager.noanim test globals for isProcessing/isCardAnimating
+
+Summary:
+- Ensure test-only setup defines `isProcessing`/`isCardAnimating` on both `global` and `window` to match runtime access patterns and avoid ReferenceError.
+- Clean up injected globals after each test to prevent cross-test contamination.
+
+Root cause (failing stack):
+- ReferenceError: isProcessing is not defined during `tests/unit/game/turn-manager.noanim.test.js`.
+- The test only set `window.isProcessing`/`window.isCardAnimating`, while runtime also reads global identifiers.
+
+Changes:
+- tests/unit/game/turn-manager.noanim.test.js:
+  - `beforeEach`: set `global.isProcessing = false; global.isCardAnimating = false;` and mirror to `window`.
+  - `afterEach`: delete `global.isProcessing` / `global.isCardAnimating` and window mirrors.
+
+Evidence (file:line):
+- beforeEach injection site: [tests/unit/game/turn-manager.noanim.test.js](tests/unit/game/turn-manager.noanim.test.js#L22-L32)
+- afterEach cleanup site: [tests/unit/game/turn-manager.noanim.test.js](tests/unit/game/turn-manager.noanim.test.js#L60-L69)
+
+Verification:
+- npm run test:jest -i tests/unit/game/turn-manager.noanim.test.js  (PASS, but Jest reported open handles warning)
+- npm run test:jest -i  (PASS, but Jest reported open handles warning: `ReferenceError: window is not defined` from ui.js timer)
+- npm run check:ui-writers  (PASS)
+
+END PATCH

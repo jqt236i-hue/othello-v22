@@ -1,0 +1,1139 @@
+From 35ac9cc7dd5e8d2ea04d546addcf4b6074fdf282 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:03:44 +0900
+Subject: [PATCH] refactor(turn-start): pipeline precompute events used by UI
+ special-effects; avoid UI rule writes
+
+---
+ game/special-effects/bombs.js       | 126 +++++++++
+ game/special-effects/breeding.js    |  27 +-
+ game/special-effects/dragons.js     | 310 +++++++++++++++++++++
+ game/special-effects/hyperactive.js |  82 +++---
+ game/special-effects/udg.js         | 109 ++++++++
+ game/turn-manager.js                | 407 ++++++++++++++++++++++++++++
+ 6 files changed, 1017 insertions(+), 44 deletions(-)
+ create mode 100644 game/special-effects/bombs.js
+ create mode 100644 game/special-effects/dragons.js
+ create mode 100644 game/special-effects/udg.js
+ create mode 100644 game/turn-manager.js
+
+diff --git a/game/special-effects/bombs.js b/game/special-effects/bombs.js
+new file mode 100644
+index 0000000..d3127b1
+--- /dev/null
++++ b/game/special-effects/bombs.js
+@@ -0,0 +1,126 @@
++/**
++ * @file bombs.js
++ * @description Bomb handling (tick + explosion UI)
++ */
++
++/**
++ * Process all bombs: decrement turn counters and explode those that reach 0
++ * @async
++ * @returns {Promise<void>}
++ */
++async function processBombs(precomputedEvents = null) {
++    if (!cardState.bombs || cardState.bombs.length === 0) return;
++
++    // Snapshot bomb owners BEFORE ticking, because tickBombs removes exploded bombs from cardState.bombs.
++    const bombOwnerValByPos = new Map();
++    for (const b of cardState.bombs) {
++        const ownerVal = b.owner === 'black' ? BLACK : WHITE;
++        bombOwnerValByPos.set(`${b.row},${b.col}`, ownerVal);
++    }
++
++    // Use pipeline-produced events if provided, otherwise compute them here
++    const activeKey = (typeof getPlayerKey === 'function') ? getPlayerKey(gameState.currentPlayer) : (gameState.currentPlayer === BLACK ? 'black' : 'white');
++    const events = Array.isArray(precomputedEvents) ? precomputedEvents.slice() : [];
++    if (events.length === 0) {
++        if (typeof TurnPipelinePhases !== 'undefined' && typeof TurnPipelinePhases.applyTurnStartPhase === 'function') {
++            TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, activeKey, events);
++        } else {
++            console.error('[PROCESS-BOMBS] TurnPipelinePhases.applyTurnStartPhase not available; skipping bomb processing');
++            return;
++        }
++    }
++
++    // Look for bombs_exploded event produced by the pipeline
++    const bombEvent = events.find(e => e.type === 'bombs_exploded');
++    const result = (bombEvent && bombEvent.details) ? bombEvent.details : null;
++
++    if (!result || !result.exploded || result.exploded.length === 0) {
++        // Nothing exploded but counters may have changed; emit status update
++        emitGameStateChange();
++        return;
++    }
++
++    // Log explosions
++    for (const pos of result.exploded) {
++        addLog(LOG_MESSAGES.bombExploded(posToNotation(pos.row, pos.col)));
++    }
++
++    // Animation order: 1) bomb anchor fades out, 2) surrounding destroyed stones in batch
++    const destroyedKeySet = new Set((result.destroyed || []).map(p => `${p.row},${p.col}`));
++    const alreadyAnimated = new Set();
++
++    for (const center of result.exploded) {
++        const centerKey = `${center.row},${center.col}`;
++
++        // 1) bomb itself first (if present in destroyed list)
++        if (destroyedKeySet.has(centerKey) && !alreadyAnimated.has(centerKey)) {
++            alreadyAnimated.add(centerKey);
++            const ownerVal = bombOwnerValByPos.get(centerKey);
++            await animateFadeOutAt(center.row, center.col, {
++                createGhost: true,
++                color: ownerVal
++            });
++        }
++
++        // 2) surrounding 8 as batch
++        const batch = [];
++        for (let dr = -1; dr <= 1; dr++) {
++            for (let dc = -1; dc <= 1; dc++) {
++                if (dr === 0 && dc === 0) continue;
++                const r = center.row + dr;
++                const c = center.col + dc;
++                if (r < 0 || r >= 8 || c < 0 || c >= 8) continue;
++                const key = `${r},${c}`;
++                if (!destroyedKeySet.has(key) || alreadyAnimated.has(key)) continue;
++                alreadyAnimated.add(key);
++                batch.push(animateFadeOutAt(r, c));
++            }
++        }
++        if (batch.length > 0) await Promise.all(batch);
++    }
++
++    // Fallback: any destroyed stones not covered by exploded centers
++    const leftover = [];
++    for (const pos of (result.destroyed || [])) {
++        const key = `${pos.row},${pos.col}`;
++        if (alreadyAnimated.has(key)) continue;
++        alreadyAnimated.add(key);
++        leftover.push(animateFadeOutAt(pos.row, pos.col));
++    }
++    if (leftover.length > 0) await Promise.all(leftover);
++
++    // Update board display after animations
++    emitBoardUpdate();
++
++    // Always update status
++    emitGameStateChange();
++}
++
++/**
++ * Handle UI for bomb explosion
++ * @param {number} row
++ * @param {number} col
++ */
++async function explodeBombUI(row, col) {
++    addLog(LOG_MESSAGES.bombExploded(posToNotation(row, col)));
++
++    // Animate 3x3 destruction
++    // Note: Logical stones are already removed by CardLogic, but UI is stale so we can animate
++    const tasks = [];
++    for (let dr = -1; dr <= 1; dr++) {
++        for (let dc = -1; dc <= 1; dc++) {
++            const r = row + dr;
++            const c = col + dc;
++            if (r >= 0 && r < 8 && c >= 0 && c < 8) {
++                // We blindly animate explosion on all 9 squares
++                tasks.push(animateDestroyAt(r, c));
++            }
++        }
++    }
++    await Promise.all(tasks);
++}
++
++if (typeof window !== 'undefined') {
++    window.processBombs = processBombs;
++    window.explodeBombUI = explodeBombUI;
++}
+diff --git a/game/special-effects/breeding.js b/game/special-effects/breeding.js
+index 28dda83..f9053f6 100644
+--- a/game/special-effects/breeding.js
++++ b/game/special-effects/breeding.js
+@@ -10,12 +10,31 @@
+  * @param {Object} [precomputedResult] - Optional pre-computed result from logic layer
+  * @returns {Promise<void>}
+  */
+-async function processBreedingEffectsAtTurnStart(player, precomputedResult = null) {
++async function processBreedingEffectsAtTurnStart(player, precomputedEvents = null) {
+     const playerKey = player === BLACK ? 'black' : 'white';
+ 
+-    // Call the core logic to spawn stones and get destruction info
+-    // result: { spawned: [...], destroyed: [...] }
+-    const result = precomputedResult || CardLogic.processBreedingEffects(cardState, gameState, playerKey);
++    // Prefer a precomputed result from pipeline events if provided
++    let result = null;
++    if (precomputedEvents && Array.isArray(precomputedEvents)) {
++        result = { spawned: [], destroyed: [], flipped: [], anchors: [] };
++        for (const ev of precomputedEvents) {
++            if (ev.type === 'breeding_spawned_start' || ev.type === 'breeding_spawned_immediate') {
++                if (Array.isArray(ev.details)) result.spawned.push(...ev.details);
++            }
++            if (ev.type === 'breeding_destroyed_start' || ev.type === 'breeding_destroyed_immediate') {
++                if (Array.isArray(ev.details)) result.destroyed.push(...ev.details);
++            }
++            if (ev.type === 'breeding_flipped_start' || ev.type === 'breeding_flipped_immediate') {
++                if (Array.isArray(ev.details)) result.flipped.push(...ev.details);
++            }
++            if (ev.type === 'breeding_anchor_start' || ev.type === 'breeding_anchor_immediate') {
++                if (Array.isArray(ev.details)) result.anchors.push(...ev.details);
++            }
++        }
++    } else {
++        // Fallback: call CardLogic (discouraged for UI-only path)
++        result = CardLogic.processBreedingEffects(cardState, gameState, playerKey);
++    }
+ 
+     if (result.spawned.length > 0) {
+         addLog(LOG_MESSAGES.breedingSpawnedImmediate(getPlayerName(player), result.spawned.length));
+diff --git a/game/special-effects/dragons.js b/game/special-effects/dragons.js
+new file mode 100644
+index 0000000..6ba4e5e
+--- /dev/null
++++ b/game/special-effects/dragons.js
+@@ -0,0 +1,310 @@
++/**
++ * @file dragons.js
++ * @description Ultimate Reverse Dragon effect handlers
++ */
++
++/**
++ * Process ultimate reverse dragons: convert surrounding enemy stones
++ * @async
++ * @param {number} player - Current player (BLACK=1 or WHITE=-1)
++ * @returns {Promise<void>}
++ */
++async function processUltimateReverseDragonsAtTurnStart(player) {
++    // Get dragons from unified specialStones
++    const dragons = cardState.specialStones ? cardState.specialStones.filter(s => s.type === 'DRAGON') : [];
++    if (dragons.length === 0) return;
++
++    const playerKey = player === BLACK ? 'black' : 'white';
++
++    // Prefer pipeline-produced computation. Use TurnPipelinePhases to perform turn-start processing which includes dragon effects.
++    let result = null;
++    const events = [];
++    if (typeof TurnPipelinePhases !== 'undefined' && typeof TurnPipelinePhases.applyTurnStartPhase === 'function') {
++        TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, playerKey, events);
++
++        // Build result shape from events
++        result = { converted: [], destroyed: [], anchors: [] };
++        let regenRes = { regened: [], captureFlips: [] };
++
++        for (const ev of events) {
++            if (ev.type === 'dragon_converted_start' || ev.type === 'dragon_converted_immediate') {
++                if (Array.isArray(ev.details)) result.converted.push(...ev.details);
++            }
++            if (ev.type === 'dragon_destroyed_anchor_start' || ev.type === 'dragon_destroyed_anchor_immediate') {
++                if (Array.isArray(ev.details)) result.destroyed.push(...ev.details);
++            }
++            if (ev.type === 'udg_expired_start' || ev.type === 'udg_expired_immediate') {
++                if (Array.isArray(ev.details)) result.anchors.push(...ev.details);
++            }
++            if (ev.type === 'regen_triggered_start' && Array.isArray(ev.details)) {
++                regenRes.regened.push(...ev.details);
++            }
++            if (ev.type === 'regen_capture_flipped_start' && Array.isArray(ev.details)) {
++                regenRes.captureFlips.push(...ev.details);
++            }
++        }
++
++        // If capture flips require clearing hyperactive marks, pipeline phases already make those logic changes.
++
++        // Refresh dragon timers BEFORE any fade-out so "0" can be visible on the last tick.
++        if (Array.isArray(result.anchors) && result.anchors.length > 0) {
++            for (const a of result.anchors) {
++                const cell = boardEl.querySelector(`.cell[data-row="${a.row}"][data-col="${a.col}"]`);
++                if (!cell) continue;
++                const disc = cell.querySelector('.disc');
++                if (!disc) continue;
++
++                let timer = disc.querySelector('.dragon-timer');
++                if (!timer) {
++                    timer = document.createElement('div');
++                    timer.className = 'dragon-timer';
++                    disc.appendChild(timer);
++                }
++                timer.textContent = Math.min(5, a.remainingNow);
++            }
++        }
++
++        // Charge updates MUST be applied by the rule pipeline; do not mutate rule state here.
++        if (result.converted.length > 0) {
++            if (typeof emitCardStateChange === 'function') emitCardStateChange();
++            else console.warn('[DRAGONS] charge updates should come from pipeline; emitCardStateChange not available');
++        }
++
++        // Log conversions
++        if (result.converted.length > 0) {
++            addLog(LOG_MESSAGES.dragonConverted(getPlayerName(player), result.converted.length));
++        }
++    } else {
++        console.error('[DRAGONS] TurnPipelinePhases.applyTurnStartPhase not available; skipping dragon processing');
++        return;
++    }
++
++    const delay = typeof FLIP_ANIMATION_DURATION_MS !== 'undefined' ? FLIP_ANIMATION_DURATION_MS : 800;
++
++    if (result.converted.length > 0) {
++        // IMPORTANT:
++        // Do NOT re-render the board here.
++        // When a dragon expires on the same tick it converts stones, CardLogic has already
++        // set the anchor cell to EMPTY. A re-render would remove the anchor disc before
++        // we can run the fade-out animation, making it "instantly disappear" sometimes.
++        // We only need manual visual tweaks because converted targets already have discs.
++
++        const regenedSet = new Set((regenRes.regened || []).map(p => `${p.row},${p.col}`));
++
++        const setDiscColorAt = (row, col, color) => {
++            const cell = boardEl.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (!disc) return;
++            disc.classList.remove('black', 'white');
++            disc.classList.add(color === BLACK ? 'black' : 'white');
++        };
++
++        const removeBombOverlayAt = (row, col) => {
++            const cell = boardEl.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (!disc) return;
++            disc.classList.remove('bomb');
++            const timer = disc.querySelector('.bomb-timer');
++            if (timer) timer.remove();
++            const icon = disc.querySelector('.bomb-icon');
++            if (icon) icon.remove();
++        };
++
++        // Ensure converted stones visually become the new color immediately.
++        for (const pos of result.converted) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) continue; // Skip visual change for Regen stones
++
++            // Bombs become normal stones when flipped, so remove bomb visuals immediately.
++            removeBombOverlayAt(pos.row, pos.col);
++            setDiscColorAt(pos.row, pos.col, player);
++
++            // If it was a special stone (like Regen but NOT regened now, though that shouldn't happen here),
++            // remove its effect because it's been flipped.
++            const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (disc && typeof crossfadeStoneVisual === 'function') {
++                await crossfadeStoneVisual(disc, { effectKey: 'regenStone', owner: player, fadeIn: false, durationMs: 600 });
++            } else if (disc && typeof removeStoneVisualEffect === 'function') {
++                removeStoneVisualEffect(disc, 'regenStone');
++            }
++        }
++
++        // Apply flip class manually to guarantee animation even if helper is missing
++        for (const pos of result.converted) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) continue; // Skip flip for Regen stones
++
++            const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (!disc) continue;
++            disc.classList.remove('flip');
++            void disc.offsetWidth; // reflow to restart animation
++            disc.classList.add('flip');
++        }
++
++        // Also call shared helper if available (keeps behavior consistent elsewhere)
++        if (typeof applyFlipAnimations === 'function') {
++            const flipCoords = result.converted
++                .filter(p => !regenedSet.has(`${p.row},${p.col}`))
++                .map(p => [p.row, p.col]);
++            if (flipCoords.length > 0) {
++                applyFlipAnimations(flipCoords);
++            }
++        }
++
++        await new Promise(resolve => setTimeout(resolve, delay));
++
++        if (regenRes.regened && regenRes.regened.length) {
++            // Use universal cross-fade system
++            for (const pos of regenRes.regened) {
++                const ownerColor = gameState.board[pos.row][pos.col];
++                const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++                const disc = cell ? cell.querySelector('.disc') : null;
++                if (!disc) continue;
++
++                // Start cross-fade (fade in then auto fade out)
++                await crossfadeStoneVisual(disc, {
++                    effectKey: 'regenStone',
++                    owner: ownerColor,
++                    newColor: ownerColor,
++                    durationMs: 600,
++                    autoFadeOut: true,
++                    fadeWholeStone: true
++                });
++            }
++        }
++
++        // Regen capture flips (do not include the "flip back" itself; only capture flips)
++        if (regenRes.captureFlips && regenRes.captureFlips.length) {
++            for (const pos of regenRes.captureFlips) {
++                setDiscColorAt(pos.row, pos.col, -player);
++                const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++                const disc = cell ? cell.querySelector('.disc') : null;
++                if (!disc) continue;
++                disc.classList.remove('flip');
++                void disc.offsetWidth;
++                disc.classList.add('flip');
++            }
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++    }
++
++    // Animate destroyed anchors (fade-out) after conversions
++    for (const pos of result.destroyed) {
++        await animateFadeOutAt(pos.row, pos.col, { createGhost: true, color: player, effectKey: 'ultimateDragon' });
++    }
++
++    // Final UI sync after all animations
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++/**
++ * Placement-turn immediate activation for a newly placed dragon anchor.
++ * Runs AFTER normal flip animations, and before turn ends.
++ * @param {number} player
++ * @param {number} row
++ * @param {number} col
++ * @param {Object} [precomputedResult]
++ */
++async function processUltimateReverseDragonImmediateAtPlacement(player, row, col, precomputedResult = null) {
++    const playerKey = player === BLACK ? 'black' : 'white';
++
++    // Prefer precomputed result (from pipeline); otherwise abort to avoid UI-side logic writes
++    let result = precomputedResult;
++    let regenRes = { regened: [], captureFlips: [] };
++    if (!result) {
++        console.error('[DRAGON IMMEDIATE] No precomputed pipeline result provided; cannot compute dragon immediate effects from UI');
++        return;
++    }
++
++    // If pipeline augmented result with regen info, use it
++    regenRes = result.regen || result.regenRes || regenRes;
++
++    if (result.converted && result.converted.length > 0) {
++        cardState.charge[playerKey] = Math.min(30, cardState.charge[playerKey] + result.converted.length);
++        addLog(LOG_MESSAGES.dragonConvertedImmediate(getPlayerName(player), result.converted.length));
++    }
++
++    const delay = typeof FLIP_ANIMATION_DURATION_MS !== 'undefined' ? FLIP_ANIMATION_DURATION_MS : 800;
++    if (result.converted.length > 0) {
++        emitBoardUpdate();
++
++        const regenedSet = new Set((regenRes.regened || []).map(p => `${p.row},${p.col}`));
++
++        const setDiscColorAt = (r, c, color) => {
++            const cell = boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (!disc) return;
++            disc.classList.remove('black', 'white');
++            disc.classList.add(color === BLACK ? 'black' : 'white');
++        };
++
++
++        const ownerColor = player === BLACK ? BLACK : WHITE;
++        const fromColor = -ownerColor;
++
++        // Prepare converted stones to show the pre-flip color
++        for (const pos of result.converted) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) {
++                // Ensure regen overlay is removed so icon doesn't interfere with flip
++                await removeRegenOverlayAt(pos.row, pos.col);
++            }
++            setDiscColorAt(pos.row, pos.col, fromColor);
++        }
++
++        const flipCoords = result.converted
++            .filter(p => !regenedSet.has(`${p.row},${p.col}`))
++            .map(p => [p.row, p.col]);
++        if (flipCoords.length > 0 && typeof applyFlipAnimations === 'function') {
++            applyFlipAnimations(flipCoords);
++            // Wait for animation duration before finalizing colors
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++
++        // Finalize colors after flip
++        for (const pos of result.converted) {
++            setDiscColorAt(pos.row, pos.col, ownerColor);
++        }
++
++        if (regenRes.regened && regenRes.regened.length) {
++            // Use universal cross-fade system
++            for (const pos of regenRes.regened) {
++                const actualOwnerColor = gameState.board[pos.row][pos.col];
++                const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++                const disc = cell ? cell.querySelector('.disc') : null;
++                if (!disc) continue;
++
++                // Start cross-fade (fade in then auto fade out)
++                await crossfadeStoneVisual(disc, {
++                    effectKey: 'regenStone',
++                    owner: actualOwnerColor,
++                    newColor: actualOwnerColor,
++                    durationMs: 600,
++                    autoFadeOut: true,
++                    fadeWholeStone: true
++                });
++            }
++        }
++
++        if (regenRes.captureFlips && regenRes.captureFlips.length) {
++            for (const pos of regenRes.captureFlips) {
++                setDiscColorAt(pos.row, pos.col, -ownerColor);
++                const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++                const disc = cell ? cell.querySelector('.disc') : null;
++                if (!disc) continue;
++                disc.classList.remove('flip');
++                void disc.offsetWidth;
++                disc.classList.add('flip');
++            }
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++    }
++
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++if (typeof window !== 'undefined') {
++    window.processUltimateReverseDragonsAtTurnStart = processUltimateReverseDragonsAtTurnStart;
++    window.processUltimateReverseDragonImmediateAtPlacement = processUltimateReverseDragonImmediateAtPlacement;
++}
+diff --git a/game/special-effects/hyperactive.js b/game/special-effects/hyperactive.js
+index fbc943c..03fcd57 100644
+--- a/game/special-effects/hyperactive.js
++++ b/game/special-effects/hyperactive.js
+@@ -11,54 +11,56 @@
+  * @param {Object} [precomputedResult] - Optional pre-computed result from logic layer
+  * @returns {Promise<void>}
+  */
+-async function processHyperactiveMovesAtTurnStart(player, precomputedResult = null) {
++async function processHyperactiveMovesAtTurnStart(player, precomputedResult = null, precomputedEvents = null) {
+     const playerKey = player === BLACK ? 'black' : 'white';
+ 
+     // Prefer pipeline-produced precomputedResult; if not provided, use TurnPipelinePhases to compute turn-start effects.
+     let result = precomputedResult;
+-    let events = [];
++    let events = Array.isArray(precomputedEvents) ? precomputedEvents.slice() : [];
+     if (!result) {
+-        if (typeof TurnPipelinePhases !== 'undefined' && typeof TurnPipelinePhases.applyTurnStartPhase === 'function') {
+-            TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, playerKey, events);
+-
+-            // Collect hyperactive-related details from events
+-            result = {
+-                moved: [],
+-                destroyed: [],
+-                flipped: [],
+-                flippedByOwner: {}
+-            };
+-
+-            for (const ev of events) {
+-                if (ev.type === 'hyperactive_moved_start' || ev.type === 'hyperactive_moved_immediate') {
+-                    if (Array.isArray(ev.details)) result.moved.push(...ev.details);
+-                }
+-                if (ev.type === 'hyperactive_destroyed_start' || ev.type === 'hyperactive_destroyed_immediate') {
+-                    if (Array.isArray(ev.details)) result.destroyed.push(...ev.details);
+-                }
+-                if (ev.type === 'hyperactive_flipped_start' || ev.type === 'hyperactive_flipped_immediate') {
+-                    if (Array.isArray(ev.details)) result.flipped.push(...ev.details);
+-                }
+-                if (ev.type === 'hyperactive_flipped_start' && Array.isArray(ev.details)) {
+-                    for (const p of ev.details) {
+-                        const owner = p.owner || null;
+-                        if (!owner) continue;
+-                        result.flippedByOwner[owner] = result.flippedByOwner[owner] || [];
+-                        result.flippedByOwner[owner].push({ row: p.row, col: p.col });
+-                    }
+-                }
++        if (events.length === 0) {
++            if (typeof TurnPipelinePhases !== 'undefined' && typeof TurnPipelinePhases.applyTurnStartPhase === 'function') {
++                TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, playerKey, events);
++            } else {
++                console.error('[HYPERACTIVE] TurnPipelinePhases not available; cannot compute hyperactive moves safely from UI');
++                return;
++            }
++        }
+ 
+-                if (ev.type === 'regen_triggered_start' && Array.isArray(ev.details)) {
+-                    // Add to regen triggered
+-                    result.regenTriggered = (result.regenTriggered || []).concat(ev.details);
+-                }
+-                if (ev.type === 'regen_capture_flipped_start' && Array.isArray(ev.details)) {
+-                    result.regenCaptureFlips = (result.regenCaptureFlips || []).concat(ev.details);
++        // Collect hyperactive-related details from events
++        result = {
++            moved: [],
++            destroyed: [],
++            flipped: [],
++            flippedByOwner: {}
++        };
++
++        for (const ev of events) {
++            if (ev.type === 'hyperactive_moved_start' || ev.type === 'hyperactive_moved_immediate') {
++                if (Array.isArray(ev.details)) result.moved.push(...ev.details);
++            }
++            if (ev.type === 'hyperactive_destroyed_start' || ev.type === 'hyperactive_destroyed_immediate') {
++                if (Array.isArray(ev.details)) result.destroyed.push(...ev.details);
++            }
++            if (ev.type === 'hyperactive_flipped_start' || ev.type === 'hyperactive_flipped_immediate') {
++                if (Array.isArray(ev.details)) result.flipped.push(...ev.details);
++            }
++            if (ev.type === 'hyperactive_flipped_start' && Array.isArray(ev.details)) {
++                for (const p of ev.details) {
++                    const owner = p.owner || null;
++                    if (!owner) continue;
++                    result.flippedByOwner[owner] = result.flippedByOwner[owner] || [];
++                    result.flippedByOwner[owner].push({ row: p.row, col: p.col });
+                 }
+             }
+-        } else {
+-            console.error('[HYPERACTIVE] TurnPipelinePhases not available; cannot compute hyperactive moves safely from UI');
+-            return;
++
++            if (ev.type === 'regen_triggered_start' && Array.isArray(ev.details)) {
++                // Add to regen triggered
++                result.regenTriggered = (result.regenTriggered || []).concat(ev.details);
++            }
++            if (ev.type === 'regen_capture_flipped_start' && Array.isArray(ev.details)) {
++                result.regenCaptureFlips = (result.regenCaptureFlips || []).concat(ev.details);
++            }
+         }
+     }
+ 
+diff --git a/game/special-effects/udg.js b/game/special-effects/udg.js
+new file mode 100644
+index 0000000..893e883
+--- /dev/null
++++ b/game/special-effects/udg.js
+@@ -0,0 +1,109 @@
++/**
++ * @file udg.js
++ * @description Ultimate Destroy God effect handlers
++ */
++
++/**
++ * Process ultimate destroy gods: destroy surrounding enemy stones (Destroy)
++ * @async
++ * @param {number} player - Current player (BLACK=1 or WHITE=-1)
++ * @returns {Promise<void>}
++ */
++async function processUltimateDestroyGodsAtTurnStart(player, precomputedResult = null, precomputedEvents = null) {
++    const udgs = cardState.specialStones ? cardState.specialStones.filter(s => s.type === 'ULTIMATE_DESTROY_GOD') : [];
++    if (!udgs.length) return;
++
++    const playerKey = player === BLACK ? 'black' : 'white';
++    // Prefer precomputed result (from pipeline). If not provided, try to extract from events.
++    let result = precomputedResult;
++    if (!result) {
++        if (Array.isArray(precomputedEvents) && precomputedEvents.length) {
++            // Build result from events
++            result = { destroyed: [], expired: [], anchors: [] };
++            for (const ev of precomputedEvents) {
++                if (ev.type === 'udg_destroyed_start' || ev.type === 'udg_destroyed_immediate') {
++                    if (Array.isArray(ev.details)) result.destroyed.push(...ev.details);
++                }
++                if (ev.type === 'udg_expired_start' || ev.type === 'udg_expired_immediate') {
++                    if (Array.isArray(ev.details)) result.expired.push(...ev.details);
++                }
++                if (ev.type === 'udg_anchor_start' || ev.type === 'udg_anchor_immediate') {
++                    if (Array.isArray(ev.details)) result.anchors.push(...ev.details);
++                }
++            }
++        } else {
++            // Fall back to logic-layer call, but this is discouraged for UI-only path
++            console.warn('[UDG] No precomputed pipeline result/events provided; falling back to CardLogic (discouraged)');
++            result = CardLogic.processUltimateDestroyGodEffects(cardState, gameState, playerKey);
++        }
++    }
++
++    // Refresh timers BEFORE any fade-out so "0" can be visible on the last tick.
++    if (Array.isArray(result.anchors) && result.anchors.length > 0) {
++        for (const a of result.anchors) {
++            const cell = boardEl.querySelector(`.cell[data-row="${a.row}"][data-col="${a.col}"]`);
++            if (!cell) continue;
++            const disc = cell.querySelector('.disc');
++            if (!disc) continue;
++
++            let timer = disc.querySelector('.udg-timer');
++            if (!timer) {
++                timer = document.createElement('div');
++                timer.className = 'udg-timer';
++                disc.appendChild(timer);
++            }
++            timer.textContent = Math.min(3, a.remainingNow);
++        }
++    }
++
++    if (result.destroyed.length > 0) {
++        addLog(LOG_MESSAGES.udgDestroyed(getPlayerName(player), result.destroyed.length));
++    }
++
++    // Fade-out destroyed stones as a batch
++    if (result.destroyed.length > 0) {
++        const unique = new Map();
++        for (const p of result.destroyed) unique.set(`${p.row},${p.col}`, p);
++        await Promise.all(Array.from(unique.values()).map(p => animateFadeOutAt(p.row, p.col)));
++    }
++
++    // Fade-out expired anchors AFTER destroying surroundings
++    if (Array.isArray(result.expired) && result.expired.length > 0) {
++        const unique = new Map();
++        for (const p of result.expired) unique.set(`${p.row},${p.col}`, p);
++        for (const p of unique.values()) {
++            await animateFadeOutAt(p.row, p.col, { createGhost: true, color: player, effectKey: 'ultimateDestroyGod' });
++        }
++    }
++
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++/**
++ * Placement-turn immediate activation for a newly placed UDG anchor.
++ * Runs AFTER normal flip animations, and before turn ends.
++ * @param {number} player
++ * @param {number} row
++ * @param {number} col
++ * @param {Object} [precomputedResult]
++ */
++async function processUltimateDestroyGodImmediateAtPlacement(player, row, col, precomputedResult = null) {
++    const playerKey = player === BLACK ? 'black' : 'white';
++    const result = precomputedResult || CardLogic.processUltimateDestroyGodEffectsAtAnchor(cardState, gameState, playerKey, row, col);
++
++    if (result.destroyed.length > 0) {
++        addLog(LOG_MESSAGES.udgDestroyedImmediate(getPlayerName(player), result.destroyed.length));
++        const unique = new Map();
++        for (const p of result.destroyed) unique.set(`${p.row},${p.col}`, p);
++        await Promise.all(Array.from(unique.values()).map(p => animateFadeOutAt(p.row, p.col)));
++    }
++
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++if (typeof window !== 'undefined') {
++    window.processUltimateDestroyGodsAtTurnStart = processUltimateDestroyGodsAtTurnStart;
++    window.processUltimateDestroyGodImmediateAtPlacement = processUltimateDestroyGodImmediateAtPlacement;
++}
+diff --git a/game/turn-manager.js b/game/turn-manager.js
+new file mode 100644
+index 0000000..cb33335
+--- /dev/null
++++ b/game/turn-manager.js
+@@ -0,0 +1,407 @@
++/**
++ * @file turn-manager.js
++ * Core turn wiring: user input, animation gate checks, player key helpers, and game reset entrypoint.
++ */
++
++// Shared timing constants for turn/animation sequencing
++const FLIP_ANIMATION_DURATION_MS = 600;
++const CPU_TURN_DELAY_MS = 600;
++const ANIMATION_RETRY_DELAY_MS = 80;
++const ANIMATION_SETTLE_DELAY_MS = 100;
++const DOUBLE_PLACE_PASS_DELAY_MS = 250;
++const BLACK_PASS_DELAY_MS = 1000;
++
++// Use TurnPipeline by default if available (browser unification with headless).
++if (typeof window !== 'undefined' && typeof window.USE_TURN_PIPELINE === 'undefined') {
++    window.USE_TURN_PIPELINE = true;
++}
++
++function handleCellClick(row, col) {
++    // Initialize Audio Context on FIRST interaction
++    SoundEngine.init();
++
++    if (isDebugLogAvailable()) {
++        debugLog(`[CELL-CLICK] User clicked (${row},${col})`, 'debug', {
++            currentPlayer: gameState.currentPlayer,
++            isAnimationInProgress: isAnimationInProgress()
++        });
++    }
++
++
++
++    // Block while animations are running
++    if (isAnimationInProgress()) return;
++
++    const playerKey = getPlayerKey(gameState.currentPlayer);
++    const pending = cardState.pendingEffectByPlayer[playerKey];
++
++    // Selection-mode (destroy) has priority
++    if (pending && pending.type === 'DESTROY_ONE_STONE' && pending.stage === 'selectTarget') {
++        handleDestroySelection(row, col, playerKey);
++        return;
++    }
++    if (pending && pending.type === 'INHERIT_WILL' && pending.stage === 'selectTarget') {
++        if (typeof handleInheritSelection === 'function') {
++            handleInheritSelection(row, col, playerKey);
++        }
++        return;
++    }
++    if (pending && pending.type === 'TEMPT_WILL' && pending.stage === 'selectTarget') {
++        if (typeof handleTemptSelection === 'function') {
++            handleTemptSelection(row, col, playerKey);
++        }
++        return;
++    }
++    if (pending && pending.type === 'SWAP_WITH_ENEMY' && pending.stage === 'selectTarget') {
++        if (typeof handleSwapSelection === 'function') {
++            handleSwapSelection(row, col, playerKey);
++        }
++        return;
++    }
++
++    // Human move: BLACK always, or WHITE if DEBUG_HUMAN_VS_HUMAN is enabled
++    const isHumanTurn = (gameState.currentPlayer === BLACK) || (window.DEBUG_HUMAN_VS_HUMAN && gameState.currentPlayer === WHITE);
++    if (!isHumanTurn) return;
++
++    const protection = getActiveProtectionForPlayer(gameState.currentPlayer);
++    const perma = getFlipBlockers();
++    const move = findMoveForCell(gameState.currentPlayer, row, col, pending, protection, perma);
++    if (!move) {
++        if (isDebugLogAvailable()) {
++            debugLog(`[MOVE] Invalid move attempted at (${row},${col})`, 'warn', {
++                currentPlayer: gameState.currentPlayer,
++                hasPending: !!pending
++            });
++        }
++        return;
++    }
++
++    if (isDebugLogAvailable()) {
++        debugLog(`[MOVE] Valid move found at (${row},${col})`, 'info', {
++            flips: move.flips ? move.flips.length : 0,
++            currentPlayer: gameState.currentPlayer,
++            playerKey
++        });
++    }
++
++    playHandAnimation(gameState.currentPlayer, row, col, () => {
++        if (isCardAnimating) {
++            setTimeout(() => executeMove(move), ANIMATION_SETTLE_DELAY_MS);
++        } else {
++            executeMove(move);
++        }
++    });
++}
++
++function isAnimationInProgress() {
++    const proc = (typeof window !== 'undefined' && typeof window.isProcessing !== 'undefined') ? window.isProcessing : (typeof isProcessing !== 'undefined' ? isProcessing : false);
++    const card = (typeof window !== 'undefined' && typeof window.isCardAnimating !== 'undefined') ? window.isCardAnimating : (typeof isCardAnimating !== 'undefined' ? isCardAnimating : false);
++    return proc || card;
++}
++
++function getPlayerKey(player) {
++    return player === BLACK ? 'black' : 'white';
++}
++
++function getPlayerName(player) {
++    return player === BLACK ? '黒' : '白';
++}
++
++function resetGame() {
++    // Auto mode removed: nothing to stop or reset
++
++
++    const smartBlack = (typeof document !== 'undefined') ? document.getElementById('smartBlack') : null;
++    const smartWhite = (typeof document !== 'undefined') ? document.getElementById('smartWhite') : null;
++    if (smartBlack) {
++        cpuSmartness.black = Number(smartBlack.value) || 1;
++    }
++    if (smartWhite) {
++        cpuSmartness.white = Number(smartWhite.value) || 1;
++    }
++
++    console.log(`[resetGame] CPU Levels - Black: ${cpuSmartness.black}, White: ${cpuSmartness.white}`);
++
++    if (typeof updateCpuCharacter === 'function') {
++        updateCpuCharacter();
++    }
++
++    gameState = createGameState();
++
++    try {
++        // initCardState may rely on PRNG; if unavailable, tests should mock or skip
++        if (typeof initCardState === 'function') initCardState();
++    } catch (e) {
++        // In test environments without PRNG, allow fallback to a minimal cardState via CardLogic
++        console.warn('[resetGame] initCardState failed (test environment):', e.message);
++        if (typeof CardLogic !== 'undefined' && typeof CardLogic.createCardState === 'function') {
++            const prngStub = { next: () => 0.5, _seed: Date.now() };
++            const newState = CardLogic.createCardState(prngStub);
++            // Wipe and copy properties to maintain global reference pattern
++            if (typeof window !== 'undefined' && window.cardState) {
++                for (const k in window.cardState) delete window.cardState[k];
++                Object.assign(window.cardState, newState);
++            } else if (typeof cardState !== 'undefined') {
++                for (const k in cardState) delete cardState[k];
++                Object.assign(cardState, newState);
++            } else {
++                // last resort: set a minimal global cardState
++                global.cardState = global.cardState || newState;
++            }
++        }
++    }
++
++    // Reset ActionManager for new game
++    if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager) {
++        ActionManager.ActionManager.reset();
++        console.log('[resetGame] ActionManager reset');
++    }
++
++    if (typeof document !== 'undefined') {
++        const logEl = document.getElementById('log');
++        if (logEl) logEl.innerHTML = '';
++    }
++
++    addLog(`ゲーム開始 (黒: Lv${cpuSmartness.black}, 白: Lv${cpuSmartness.white})`);
++    emitBoardUpdate();
++    emitGameStateChange();
++
++    // Lock input during initial dealing animation
++    if (typeof window !== 'undefined') {
++        window.isProcessing = true;
++        window.isCardAnimating = true;
++    } else {
++        isProcessing = true;
++        isCardAnimating = true;
++    }
++
++    if (typeof dealInitialCards === 'function') {
++        dealInitialCards()
++            .then(() => {
++                if (typeof window !== 'undefined') {
++                    window.isProcessing = false;
++                } else {
++                    isProcessing = false;
++                }
++                onTurnStart(BLACK);
++                addLog('カード配布完了');
++
++            })
++            .catch((err) => {
++                console.error('Deal animation error:', err);
++                addLog('エラー: カード配布に失敗しました');
++            })
++            .finally(() => {
++                if (typeof window !== 'undefined') {
++                    window.isCardAnimating = false;
++                    window.isProcessing = false;
++                } else {
++                    isCardAnimating = false;
++                    isProcessing = false;
++                }
++            });
++    } else {
++        // No animation path (Phase2 safe-guard): continue immediately
++        if (typeof window !== 'undefined') { window.isCardAnimating = false; window.isProcessing = false; } else { isCardAnimating = false; isProcessing = false; }
++        try {
++            if (typeof window !== 'undefined' && typeof window.onTurnStart === 'function') {
++                window.onTurnStart(BLACK);
++            } else if (typeof global !== 'undefined' && typeof global.onTurnStart === 'function') {
++                global.onTurnStart(BLACK);
++            } else {
++                onTurnStart(BLACK);
++            }
++        } catch (e) { console.error('onTurnStart error (noanim fallback):', e); }
++        addLog('カード配布完了 (no animation)');
++    }
++
++}
++
++/**
++ * ターン開始処理
++ * Turn Start Logic coordination
++ * @param {number} player - BLACK (1) or WHITE (-1)
++ */
++async function onTurnStart(player) {
++    const playerKey = getPlayerKey(player);
++
++    console.log('[DEBUG][onTurnStart] enter', { player, playerKey, isProcessing, isCardAnimating, windowIsProcessing: (typeof window !== 'undefined' ? window.isProcessing : undefined), windowIsCardAnimating: (typeof window !== 'undefined' ? window.isCardAnimating : undefined), USE_TURN_PIPELINE: !!window.USE_TURN_PIPELINE });
++
++    // Record hand size before turn start to detect if a draw happened
++    const handSizeBefore = cardState.hands[playerKey].length;
++
++    if (isDebugLogAvailable()) {
++        debugLog(`[TURN-START] onTurnStart called for ${playerKey}, handBefore: ${handSizeBefore}, turnCount: ${cardState.turnCountByPlayer[playerKey]}`, 'info');
++    }
++
++    // 1. Shared Logic Turn Start (Reset flags, tick active effect durations, Draw)
++    // Migrate turn-start logic into the turn pipeline phases and invoke the pipeline phase here
++    // so that the *pipeline* (not UI) is the single writer of rule state.
++    const _startEvents = [];
++    if (typeof TurnPipelinePhases !== 'undefined' && typeof TurnPipelinePhases.applyTurnStartPhase === 'function') {
++        try {
++            if (typeof Core === 'undefined') {
++                console.error('[CRITICAL][onTurnStart] Core is undefined; TurnPipelinePhases.applyTurnStartPhase may fail');
++            }
++            TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, playerKey, _startEvents);
++        } catch (e) {
++            console.error('[CRITICAL][onTurnStart] TurnPipelinePhases.applyTurnStartPhase threw', e && e.stack || e);
++            // Continue gracefully - avoid bubbling exception to caller
++        }
++    } else {
++        console.error('[TURN-START] TurnPipelinePhases.applyTurnStartPhase not available; turn-start skipped');
++    }
++
++    const handSizeAfter = cardState.hands[playerKey].length;
++    const newTurnCount = cardState.turnCountByPlayer[playerKey];
++
++    if (isDebugLogAvailable()) {
++        debugLog(`[TURN-START] After turn-start phase: handAfter: ${handSizeAfter}, newTurnCount: ${newTurnCount}`, 'info');
++    }
++
++    console.log('[DEBUG][onTurnStart] exit', { playerKey, handSizeBefore, handSizeAfter, newTurnCount, isProcessing, isCardAnimating, pendingEffect: cardState.pendingEffectByPlayer });
++
++    // 2. Log
++    const turnCount = gameState.turnNumber + 1;
++    addLog(`== ${getPlayerName(player)}のターン (${turnCount}手目) ==`);
++
++    // 3. Draw Animation (if draw happened during the turn-start phase)
++    if (handSizeAfter > handSizeBefore) {
++        // A card was drawn - animate it
++        console.log(`[DRAW] Card drawn for ${playerKey}! handBefore=${handSizeBefore}, handAfter=${handSizeAfter}`);
++        if (typeof window !== 'undefined') window.isCardAnimating = true; else isCardAnimating = true;
++        try {
++            const drawnCardId = cardState.hands[playerKey][cardState.hands[playerKey].length - 1];
++            if (drawnCardId !== null && drawnCardId !== undefined) {
++                addLog(`${getPlayerName(player)}がドローしました`);
++                if (typeof updateDeckVisual === 'function') updateDeckVisual();
++                const isHidden = (typeof document !== 'undefined' && document.hidden) ||
++                    (typeof window !== 'undefined' && window.__BACKGROUND_MODE__ === true);
++
++                if (!isHidden) {
++                    if (typeof playDrawAnimation === 'function') {
++                        await playDrawAnimation(player, drawnCardId);
++                    }
++
++                    // Deck pulse: run even if animation is absent so UI feedback remains consistent
++                    const deckEls = [(typeof document !== 'undefined') ? document.getElementById('deck-black') : null, (typeof document !== 'undefined') ? document.getElementById('deck-white') : null];
++                    deckEls.forEach(el => {
++                        if (el) {
++                            el.classList.add('deck-pulse');
++                            el.addEventListener('animationend', () => el.classList.remove('deck-pulse'), { once: true });
++                        }
++                    });
++                }
++            }
++        } catch (err) {
++            console.error('Draw animation error:', err);
++        } finally {
++            if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
++        }
++    }
++
++    // 4. Special Effects (Bombs & Dragons & Breeding)
++    // Use the precomputed _startEvents produced by TurnPipelinePhases.applyTurnStartPhase
++    // so UI handlers do not re-run the pipeline nor mutate rule state directly.
++    if (typeof processBombs === 'function') {
++        await processBombs(_startEvents);
++    }
++    if (typeof processUltimateDestroyGodsAtTurnStart === 'function') {
++        await processUltimateDestroyGodsAtTurnStart(player, null, _startEvents);
++    }
++    if (typeof processUltimateReverseDragonsAtTurnStart === 'function') {
++        await processUltimateReverseDragonsAtTurnStart(player);
++    }
++    if (typeof processBreedingEffectsAtTurnStart === 'function') {
++        await processBreedingEffectsAtTurnStart(player, _startEvents);
++    }
++    if (typeof processHyperactiveMovesAtTurnStart === 'function') {
++        await processHyperactiveMovesAtTurnStart(player, null, _startEvents);
++    }
++
++    // 5. Update UI
++    emitGameStateChange(); // Updates status panel, active effects
++    emitCardStateChange(); // Updates hand enablement
++
++    // 6. Render
++    if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
++    else if (typeof renderBoard === 'function') renderBoard();
++    if (typeof renderCardUI === 'function') renderCardUI();
++
++    // 7. DEBUG: Shared Hand Logic (Move White's cards to Black)
++    if (window.DEBUG_HUMAN_VS_HUMAN) {
++        if (cardState.hands.white.length > 0) {
++            console.log('[DEBUG] Transferring White cards to Black for Shared Hand mode', cardState.hands.white);
++            cardState.hands.black.push(...cardState.hands.white);
++            cardState.hands.white = [];
++            // Update UI again to reflect transfer
++            if (typeof renderCardUI === 'function') renderCardUI();
++        }
++    }
++}
++
++// ===== Watchdog: prevents permanent freeze if flags get stuck =====
++let lastFlagActiveTime = null;
++const WATCHDOG_TIMEOUT_MS = 10000;
++
++setInterval(() => {
++    if (isAnimationInProgress()) {
++        const now = Date.now();
++        if (lastFlagActiveTime === null) {
++            lastFlagActiveTime = now;
++        } else if (now - lastFlagActiveTime > WATCHDOG_TIMEOUT_MS) {
++            console.warn('[WATCHDOG] Flags stuck for too long. Force clearing...', {
++                isProcessing,
++                isCardAnimating
++            });
++            isProcessing = false;
++            isCardAnimating = false;
++            lastFlagActiveTime = null;
++            addLog('警告: 処理が長時間停滞したため強制解除しました');
++            emitBoardUpdate();
++        }
++    } else {
++        lastFlagActiveTime = null;
++    }
++}, 1000);
++
++// Export global
++window.onTurnStart = onTurnStart;
++
++// Also export other helpers if needed by other modules
++window.handleCellClick = handleCellClick;
++window.resetGame = resetGame;
++window.isAnimationInProgress = isAnimationInProgress;
++
++// Export replay function for debugging/saving game history
++window.exportReplayJSON = function () {
++    if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager) {
++        const json = ActionManager.ActionManager.exportAsJSON();
++        console.log('[exportReplayJSON] Action count:', ActionManager.ActionManager.getActionCount());
++        return json;
++    }
++    console.warn('[exportReplayJSON] ActionManager not available');
++    return '[]';
++};
++
++// Save actions to localStorage periodically (every 30 seconds)
++
++// Module exports for tests / commonjs
++if (typeof module !== 'undefined' && module.exports) {
++    module.exports = {
++        resetGame,
++        onTurnStart,
++        handleCellClick,
++        isAnimationInProgress
++    };
++}
++if (typeof window !== 'undefined') {
++    setInterval(() => {
++        if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager) {
++            const saved = ActionManager.ActionManager.saveToStorage();
++            if (saved && ActionManager.ActionManager.getActionCount() > 0) {
++                console.log('[ActionManager] Auto-saved', ActionManager.ActionManager.getActionCount(), 'actions');
++            }
++        }
++    }, 30000);
++}
+-- 
+2.50.1.windows.1
+

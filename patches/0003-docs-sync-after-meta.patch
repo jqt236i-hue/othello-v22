@@ -1,0 +1,15 @@
+*** Begin Patch
+*** Update File: AGENTS.md
+@@
+ - `stateVersion` / `rulesVersion` を導入し、互換性不一致を検出できるようにする.
++ - **注意**: `pipeline_ui_adapter` は最終スナップショット由来の `after`（`Map`）を排除し、プレイバックは JSON-safe な per-target `after` を使用する方向に移行しています（参考実装: `patches/0002-presentation-meta-and-adapter.patch`、テスト: `tests/unit/presentation_events_mandatory_meta.test.js`）。
+*** End Patch
+*** Begin Patch
+*** Update File: ONLINE_REFACTOR_PLAN.md
+@@
+-2) Remove `Map` usage from `othello_v2/game/turn/pipeline_ui_adapter.js` outputs.
+-3) Make UI prefer `presentationEvents` playback (AnimationEngine) for board updates.
++2) Remove `Map` usage from `othello_v2/game/turn/pipeline_ui_adapter.js` outputs.
++   - Note: Implemented in `patches/0002-presentation-meta-and-adapter.patch` — the adapter now produces JSON-safe per-target `after` objects and no longer relies on a final snapshot `Map`. See `tests/unit/presentation_events_mandatory_meta.test.js` for verification.
++3) Make UI prefer `presentationEvents` playback (AnimationEngine) for board updates.
+*** End Patch

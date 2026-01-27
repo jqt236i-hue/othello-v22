@@ -1,0 +1,143 @@
+*** Begin Patch
+*** Update File: tests/jest.setup.js
+@@
+ // Jest global setup for No-Animation unit tests
+ process.env.NOANIM = '1';
+@@
+ // Ensure window globals for noanim tests
+ if (typeof global.window === 'undefined') global.window = {};
+ global.window.DISABLE_ANIMATIONS = true;
++
++// Centralized timer tracking for tests: register intervals/timeouts so we can clear them after each test
++global.__jest_tracked_intervals = new Set();
++global.__jest_tracked_timeouts = new Set();
++
++const _origSetInterval = global.setInterval;
++const _origClearInterval = global.clearInterval;
++global.setInterval = function(fn, ms, ...args) {
++    const id = _origSetInterval(fn, ms, ...args);
++    try { global.__jest_tracked_intervals.add(id); } catch (e) {}
++    return id;
++};
++global.clearInterval = function(id) {
++    try { global.__jest_tracked_intervals.delete(id); } catch (e) {}
++    return _origClearInterval(id);
++};
++
++const _origSetTimeout = global.setTimeout;
++const _origClearTimeout = global.clearTimeout;
++global.setTimeout = function(fn, ms, ...args) {
++    const id = _origSetTimeout(fn, ms, ...args);
++    try { global.__jest_tracked_timeouts.add(id); } catch (e) {}
++    return id;
++};
++global.clearTimeout = function(id) {
++    try { global.__jest_tracked_timeouts.delete(id); } catch (e) {}
++    return _origClearTimeout(id);
++};
++
++global.__clearRegisteredTimers = function() {
++    try {
++        for (const id of Array.from(global.__jest_tracked_intervals)) { try { _origClearInterval(id); } catch (e) {} }
++        global.__jest_tracked_intervals.clear();
++        for (const id of Array.from(global.__jest_tracked_timeouts)) { try { _origClearTimeout(id); } catch (e) {} }
++        global.__jest_tracked_timeouts.clear();
++    } catch (e) { /* best-effort */ }
++};
+*** End Patch
+*** Begin Patch
+*** Update File: tests/jest.afterenv.js
+@@
+-// Jest after-env hooks: run when jest testing framework is available
+-
+-// Global cleanup: ensure tests don't leave timers/observers alive
+-afterAll(() => {
+-    try {
+-        if (global.TimerRegistry && typeof global.TimerRegistry.clearAll === 'function') global.TimerRegistry.clearAll();
+-        if (global.window && global.window.TimerRegistry && typeof global.window.TimerRegistry.clearAll === 'function') global.window.TimerRegistry.clearAll();
+-        if (global.window) {
+-            if (global.window._uiMirrorIntervalId) { clearInterval(global.window._uiMirrorIntervalId); global.window._uiMirrorIntervalId = null; }
+-            if (global.window._actionSaveIntervalId) { clearInterval(global.window._actionSaveIntervalId); global.window._actionSaveIntervalId = null; }
+-            if (global.window._workVisualsObserver && typeof global.window._teardownWorkVisualsObserver === 'function') {
+-                try { global.window._teardownWorkVisualsObserver(); } catch (e) {}
+-            }
+-            if (global.window._workStoneImagesPreloadTimeoutId) { clearTimeout(global.window._workStoneImagesPreloadTimeoutId); global.window._workStoneImagesPreloadTimeoutId = null; }
+-        }
+-    } catch (e) { /* best-effort cleanup only */ }
+-
+-    // Debug aid: if Jest still reports open handles, print active handles to help trace the source.
+-    try {
+-        if (typeof process !== 'undefined' && (process.env && (process.env.JEST_WORKER_ID || process.env.NODE_ENV === 'test'))) {
+-            try {
+-                const getActive = process._getActiveHandles || process._getActiveRequests ? (process._getActiveHandles ? process._getActiveHandles() : process._getActiveRequests()) : [];
+-                const list = (getActive || []).map(h => {
+-                    try {
+-                        const ctor = h && h.constructor ? (h.constructor.name || 'Unknown') : typeof h;
+-                        const info = { type: ctor };
+-                        if (h && typeof h._onTimeout !== 'undefined') info._onTimeout = !!h._onTimeout;
+-                        if (h && typeof h.hasRef === 'function') info.hasRef = h.hasRef();
+-                        return info;
+-                    } catch (e) { return { type: 'error' }; }
+-                });
+-                if (list.length) {
+-                    /* eslint-disable no-console */
+-                    console.error('[JEST AFTERENV] Active handles after all cleanup:', list);
+-                    /* eslint-enable no-console */
+-
+-                    // If only WriteStream handles remain (common on some Windows shells),
+-                    // exit explicitly to avoid Jest reporting a non-zero exit when the
+-                    // only remaining handles are logging streams.
+-                    if (list.every(x => x.type === 'WriteStream')) {
+-                        console.warn('[JEST AFTERENV] Only WriteStream handles remain; exiting process to avoid Jest non-zero exit');
+-                        setTimeout(() => { try { process.exit(0); } catch (e) {} }, 50);
+-                    }
+-                }
+-            } catch (e) { /* ignore */ }
+-        }
+-    } catch (e) { /* ignore */ }
+-});
++// Jest after-env hooks: run when jest testing framework is available
++
++// Run cleanup after each test to avoid leaking timers across tests
+afterEach(() => {
++    try { if (typeof global.__clearRegisteredTimers === 'function') global.__clearRegisteredTimers(); } catch (e) {}
++    try { if (global.TimerRegistry && typeof global.TimerRegistry.clearAll === 'function') global.TimerRegistry.clearAll(); } catch (e) {}
++    try { if (global.window && global.window.TimerRegistry && typeof global.window.TimerRegistry.clearAll === 'function') global.window.TimerRegistry.clearAll(); } catch (e) {}
++});
++
++// Global cleanup and diagnostic at the very end
+afterAll(() => {
++    try {
++        if (typeof global.__clearRegisteredTimers === 'function') global.__clearRegisteredTimers();
++        if (global.TimerRegistry && typeof global.TimerRegistry.clearAll === 'function') global.TimerRegistry.clearAll();
++        if (global.window && global.window.TimerRegistry && typeof global.window.TimerRegistry.clearAll === 'function') global.window.TimerRegistry.clearAll();
++        if (global.window) {
++            if (global.window._uiMirrorIntervalId) { clearInterval(global.window._uiMirrorIntervalId); global.window._uiMirrorIntervalId = null; }
++            if (global.window._actionSaveIntervalId) { clearInterval(global.window._actionSaveIntervalId); global.window._actionSaveIntervalId = null; }
++            if (global.window._workVisualsObserver && typeof global.window._teardownWorkVisualsObserver === 'function') {
++                try { global.window._teardownWorkVisualsObserver(); } catch (e) {}
++            }
++            if (global.window._workStoneImagesPreloadTimeoutId) { clearTimeout(global.window._workStoneImagesPreloadTimeoutId); global.window._workStoneImagesPreloadTimeoutId = null; }
++        }
++    } catch (e) { /* best-effort cleanup only */ }
++
++    // Diagnostic: enumerate active handles after cleanup (do NOT force-exit here)
++    try {
++        const getActive = process._getActiveHandles ? process._getActiveHandles() : (process._getActiveRequests ? process._getActiveRequests() : []);
++        const list = (getActive || []).map(h => {
++            try {
++                const ctor = h && h.constructor ? (h.constructor.name || 'Unknown') : typeof h;
++                const info = { type: ctor };
++                if (h && typeof h._onTimeout !== 'undefined') info._onTimeout = !!h._onTimeout;
++                if (h && typeof h.hasRef === 'function') info.hasRef = h.hasRef();
++                return info;
++            } catch (e) { return { type: 'error' }; }
++        });
++        if (list.length) {
+            if (process.env && process.env.JEST_DEBUG_HANDLES === '1') {
+                console.error('[JEST AFTERENV] Active handles after cleanup:', list);
+            }
++        }
++    } catch (e) { /* ignore */ }
++});
+*** End Patch

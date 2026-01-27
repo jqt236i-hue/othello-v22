@@ -1,0 +1,26 @@
+From 3cf80f8fc5f22f937523266653fe1c9e8758259c Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:21:30 +0900
+Subject: [PATCH] ci(cpu-fuzz): run pipeline protocol tests before fuzzer
+
+---
+ .github/workflows/cpu-fuzz.yml | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/.github/workflows/cpu-fuzz.yml b/.github/workflows/cpu-fuzz.yml
+index a8cf874..d4a7229 100644
+--- a/.github/workflows/cpu-fuzz.yml
++++ b/.github/workflows/cpu-fuzz.yml
+@@ -19,6 +19,9 @@ jobs:
+       - name: Install dependencies
+         run: npm ci
+ 
++      - name: Run unit tests (protocol)
++        run: npm run test:jest -- tests/unit/pipeline_protocol.test.js -i
++
+       - name: Install Playwright browsers
+         run: npx playwright install --with-deps
+ 
+-- 
+2.50.1.windows.1
+

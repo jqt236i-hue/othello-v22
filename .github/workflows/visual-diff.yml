@@ -1,0 +1,36 @@
+name: Visual Diff: flip-css-removal
+
+on:
+  workflow_dispatch: {}
+  pull_request_target:
+    types: [labeled]
+
+jobs:
+  visual-diff:
+    name: Visual Diff Check (manual / label)
+    if: "github.event_name == 'workflow_dispatch' || contains(join(github.event.pull_request.labels.*.name, ','), 'visual-diff')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run visual diff script
+        run: npm run test:visual:flip-css-removal
+
+      - name: Upload visual artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual_flip_removal_artifacts
+          path: artifacts/visual_flip_removal/**

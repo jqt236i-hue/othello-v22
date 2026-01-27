@@ -1,0 +1,11 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-          // Use the UI-level getLegalMoves wrapper: it accepts (state, protection, perma) and will compute for current player
+-          const legal = window.getLegalMoves ? window.getLegalMoves(gs) : [];
++          // Use the UI-level getLegalMoves wrapper and pass empty protection arrays to avoid reliance on closure-scoped cardState
++          const legal = window.getLegalMoves ? window.getLegalMoves(gs, [], []) : [];
+@@
+-                const legal = window.getLegalMoves ? window.getLegalMoves(window.gameState, [], []) : null;
++                const legal = window.getLegalMoves ? window.getLegalMoves(window.gameState, [], []) : null;
+*** End Patch

@@ -1,0 +1,132 @@
+diff --git a/animations/card-draw-flow.js b/animations/card-draw-flow.js
+deleted file mode 100644
+--- a/animations/card-draw-flow.js
++++ /dev/null
+@@ -1,14 +0,0 @@
+-/* REMOVED in Phase2: animations/card-draw-flow.js
+-   Stubbed to avoid runtime errors while physical removal is staged. */
+-
+-console.warn('animations/card-draw-flow.js: REMOVED (Phase2 stub)');
+-
+-async function dealInitialCards() {
+-    // No-op: initial dealing is handled synchronously in Phase2 (no animation)
+-    renderCardUI && typeof renderCardUI === 'function' && renderCardUI();
+-}
+-
+-async function playDrawAnimation() {
+-    // No-op stub
+-    return;
+-}
+-diff --git a/animations/card-transfer-animations.js b/animations/card-transfer-animations.js
+-deleted file mode 100644
+--- a/animations/card-transfer-animations.js
++++ /dev/null
+@@ -1,8 +0,0 @@
+-/* REMOVED in Phase2: animations/card-transfer-animations.js
+-   Stubbed to avoid runtime errors while physical removal is staged. */
+-
+-console.warn('animations/card-transfer-animations.js: REMOVED (Phase2 stub)');
+-
+-function animateCardTransfer() {
+-    // No-op stub
+-    return Promise.resolve();
+-}
+-diff --git a/animations/card-animations-basic.js b/animations/card-animations-basic.js
+-deleted file mode 100644
+--- a/animations/card-animations-basic.js
++++ /dev/null
+@@ -1,42 +0,0 @@
+-// ===== Card Animation Utilities (Basic) =====
+-
+-// Get element position relative to viewport
+-function getCardPosition(element) {
+-    const rect = element.getBoundingClientRect();
+-    return {
+-        x: rect.left + rect.width / 2,
+-        y: rect.top + rect.height / 2,
+-        width: rect.width,
+-        height: rect.height
+-    };
+-}
+-
+-// Create flying card DOM for animation
+-function createFlyingCard(isFaceUp, cardName = '') {
+-    const card = document.createElement('div');
+-    card.className = `flying-card ${isFaceUp ? 'face-up' : 'face-down'}`;
+-    card.textContent = isFaceUp ? cardName : 'CARD';
+-    return card;
+-}
+-
+-// ===== Card Deck Visual Management =====
+-
+-// Update deck visual only (thickness/count) without touching hands
+-function updateDeckVisual() {
+-    const deckBlackEl = document.getElementById('deck-black');
+-    const deckWhiteEl = document.getElementById('deck-white');
+-    const deckCount = cardState.deck.length;
+-    const ratio = Math.max(0, Math.min(1, deckCount / 20));
+-
+-    // Both decks show same count (shared deck)
+-    if (deckBlackEl) {
+-        deckBlackEl.style.setProperty('--deck-ratio', ratio);
+-        const countLabel = deckBlackEl.querySelector('.deck-count');
+-        if (countLabel) countLabel.textContent = `${deckCount}/20`;
+-    }
+-    if (deckWhiteEl) {
+-        deckWhiteEl.style.setProperty('--deck-ratio', ratio);
+-        const countLabel = deckWhiteEl.querySelector('.deck-count');
+-        if (countLabel) countLabel.textContent = `${deckCount}/20`;
+-    }
+-}
+-diff --git a/animations/card-charge-animations.js b/animations/card-charge-animations.js
+-deleted file mode 100644
+--- a/animations/card-charge-animations.js
++++ /dev/null
+@@ -1,7 +0,0 @@
+-/* REMOVED in Phase2: animations/card-charge-animations.js
+-   Stubbed to avoid runtime errors while physical removal is staged. */
+-
+-console.warn('animations/card-charge-animations.js: REMOVED (Phase2 stub)');
+-
+-function animateCardToCharge() {
+-    return Promise.resolve();
+-}
+-diff --git a/animations/card-deck-visuals.js b/animations/card-deck-visuals.js
+-deleted file mode 100644
+--- a/animations/card-deck-visuals.js
++++ /dev/null
+@@ -1,8 +0,0 @@
+-/* REMOVED in Phase2: animations/card-deck-visuals.js
+-   Stubbed to avoid runtime errors while physical removal is staged. */
+-
+-console.warn('animations/card-deck-visuals.js: REMOVED (Phase2 stub)');
+-
+-function updateDeckVisual() {
+-    // No-op stub retained for backward compatibility
+-    return;
+-}
+-diff --git a/animations/card-animation-utils.js b/animations/card-animation-utils.js
+-deleted file mode 100644
+--- a/animations/card-animation-utils.js
++++ /dev/null
+@@ -1,19 +0,0 @@
+-/* REMOVED in Phase2: animations/card-animation-utils.js
+-   Stubbed to avoid runtime errors while physical removal is staged. */
+-
+-console.warn('animations/card-animation-utils.js: REMOVED (Phase2 stub)');
+-
+-function getCardPosition() {
+-    // Return safe default so callers that accidentally run this still behave
+-    return { x: 0, y: 0, width: 0, height: 0 };
+-}
+-
+-function createFlyingCard() {
+-    const el = (typeof document !== 'undefined') ? document.createElement('div') : {};
+-    if (el && el.classList) el.className = 'flying-card stub';
+-    return el;
+-}
+-
+-function animateCardFadeIn() {
+-    // No-op stub
+-    return Promise.resolve();
+-}

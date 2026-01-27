@@ -1,0 +1,61 @@
+{
+  "name": "othello",
+  "version": "1.0.0",
+  "description": "Card Othello Game",
+  "main": "index.html",
+  "scripts": {
+    "serve": "http-server . -p 8000 -c-1",
+    "test": "node scripts/smoke_headless.js",
+    "test:e2e": "node scripts/playwright_presentation_sequences.js",
+    "test:e2e:noanim": "node scripts/playwright_presentation_sequences.js --noanim",
+    "test:e2e:flip-suppression": "node scripts/playwright_no_flip_regression.js",
+    "test:e2e:present": "node scripts/playwright_presentation_event_e2e.js",
+    "test:e2e:present-strict": "node scripts/playwright_presentation_event_assert_strict.js",
+    "test:e2e:present-suite": "node scripts/playwright_presentation_events_suite.js",
+    "test:e2e:present-sequence": "node scripts/playwright_presentation_sequence_breeding.js",
+    "test:e2e:present-visual": "node scripts/playwright_presentation_visual_check.js",
+    "test:visual:flip-css-removal": "node scripts/visual_diff_flip_removal.js",
+    "test:quick": "npm run check:consistency && npm test",
+    "check:consistency": "node scripts/check_consistency.js",
+    "check:ui-writers": "node scripts/check_ui_calls.js",
+    "check:game-dom": "node scripts/check_game_no_dom.js",
+    "check:game-window": "node scripts/check_game_no_window.js",
+    "check:game-time": "node scripts/check_game_no_time_api.js",
+    "check:game-ui-import": "node scripts/check_game_no_ui_import.js",
+    "check:rule-purity": "node scripts/check_rule_no_time_random.js",
+    "check:no-json-clone": "node scripts/check_no_json_clone.js",
+    "check:game-purity": "npm run check:game-dom && npm run check:game-window && npm run check:game-time && npm run check:game-ui-import && npm run check:rule-purity && npm run check:no-json-clone",
+    "test:cpu-fuzz": "node scripts/playwright_cpu_fuzzer.js --iterations=200 --timeoutMs=3000 --injectMock --failOnFailure",
+    "test:jest:changed": "jest --onlyChanged",
+    "test:jest": "jest --runInBand",
+    "test:jest:coverage": "jest --runInBand --coverage",
+    "test:jest:noanim": "NOANIM=1 jest --runInBand",
+    "test:jest:noanim:coverage": "NOANIM=1 jest --runInBand --coverage",
+    "smoke:ui-di": "node scripts/smoke_ui_di.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "jest": {
+    "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/tests/jest.setup.js"
+    ],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/jest.afterenv.js"
+    ],
+    "collectCoverageFrom": [
+      "game/**/*.js",
+      "!**/vendor/**"
+    ]
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "jest": "^29.6.1",
+    "jsdom": "^22.1.0",
+    "pixelmatch": "^7.1.0",
+    "playwright": "^1.57.0",
+    "pngjs": "^7.0.0"
+  }
+}

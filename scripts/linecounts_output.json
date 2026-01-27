@@ -1,0 +1,674 @@
+[
+  {
+    "path": "game\\logic\\cards.js",
+    "lines": 2315
+  },
+  {
+    "path": "scripts\\engine\\state.js",
+    "lines": 553
+  },
+  {
+    "path": "scripts\\smoke_headless.js",
+    "lines": 461
+  },
+  {
+    "path": "game\\auto-loop.js",
+    "lines": 387
+  },
+  {
+    "path": "game\\visual-effects-map.js",
+    "lines": 370
+  },
+  {
+    "path": "ui\\animation-utils.js",
+    "lines": 355
+  },
+  {
+    "path": "ui.js",
+    "lines": 349
+  },
+  {
+    "path": "scripts\\playwright_test.js",
+    "lines": 347
+  },
+  {
+    "path": "ui\\diff-renderer.js",
+    "lines": 339
+  },
+  {
+    "path": "game\\move-executor-visuals.js",
+    "lines": 338
+  },
+  {
+    "path": "game\\turn\\turn_pipeline_phases.js",
+    "lines": 330
+  },
+  {
+    "path": "game\\turn-manager.js",
+    "lines": 326
+  },
+  {
+    "path": "game\\cpu-decision.js",
+    "lines": 311
+  },
+  {
+    "path": "game\\special-effects\\hyperactive.js",
+    "lines": 304
+  },
+  {
+    "path": "game\\special-effects\\dragons.js",
+    "lines": 283
+  },
+  {
+    "path": "game\\schema\\result.js",
+    "lines": 278
+  },
+  {
+    "path": "cards\\card-interaction.js",
+    "lines": 274
+  },
+  {
+    "path": "game\\logic\\effects\\breeding.js",
+    "lines": 267
+  },
+  {
+    "path": "game\\logic\\core.js",
+    "lines": 259
+  },
+  {
+    "path": "scripts\\playwright_presentation_sequences.js",
+    "lines": 238
+  },
+  {
+    "path": "sound-engine.js",
+    "lines": 222
+  },
+  {
+    "path": "ui\\result-overlay.js",
+    "lines": 220
+  },
+  {
+    "path": "game\\schema\\action_manager.js",
+    "lines": 211
+  },
+  {
+    "path": "shared-constants.js",
+    "lines": 206
+  },
+  {
+    "path": "game\\pass-handler.js",
+    "lines": 200
+  },
+  {
+    "path": "ui\\board-renderer.js",
+    "lines": 198
+  },
+  {
+    "path": "game\\turn\\pipeline_ui_adapter.js",
+    "lines": 193
+  },
+  {
+    "path": "game\\logic\\markers_adapter.js",
+    "lines": 191
+  },
+  {
+    "path": "game\\special-effects\\breeding.js",
+    "lines": 186
+  },
+  {
+    "path": "game\\logic\\cards\\breeding.js",
+    "lines": 184
+  },
+  {
+    "path": "game\\schema\\action.js",
+    "lines": 184
+  },
+  {
+    "path": "ui\\handlers\\debug.js",
+    "lines": 179
+  },
+  {
+    "path": "ui\\status-display.js",
+    "lines": 179
+  },
+  {
+    "path": "constants\\ui-element-cache.js",
+    "lines": 173
+  },
+  {
+    "path": "game\\card-effects\\placement.js",
+    "lines": 172
+  },
+  {
+    "path": "tests\\unit\\state_hash.test.js",
+    "lines": 171
+  },
+  {
+    "path": "game\\move-generator.js",
+    "lines": 168
+  },
+  {
+    "path": "animations\\card-charge-animations.js",
+    "lines": 167
+  },
+  {
+    "path": "game\\schema\\state_validator.js",
+    "lines": 166
+  },
+  {
+    "path": "cpu\\cpu-turn.js",
+    "lines": 160
+  },
+  {
+    "path": "cards\\card-renderer.js",
+    "lines": 159
+  },
+  {
+    "path": "game\\logic\\effects\\dragon.js",
+    "lines": 158
+  },
+  {
+    "path": "game\\logic\\board_ops.js",
+    "lines": 157
+  },
+  {
+    "path": "is-env-capable.js",
+    "lines": 154
+  },
+  {
+    "path": "scripts\\check_consistency.js",
+    "lines": 153
+  },
+  {
+    "path": "game\\logic\\cards\\udg.js",
+    "lines": 152
+  },
+  {
+    "path": "game\\logic\\cards\\hyperactive.js",
+    "lines": 141
+  },
+  {
+    "path": "ui\\stone-visuals.js",
+    "lines": 139
+  },
+  {
+    "path": "game\\cpu-turn-handler.js",
+    "lines": 137
+  },
+  {
+    "path": "scripts\\check_no_math_random.js",
+    "lines": 133
+  },
+  {
+    "path": "tests\\unit\\tempt_will.test.js",
+    "lines": 132
+  },
+  {
+    "path": "animations\\card-transfer-animations.js",
+    "lines": 129
+  },
+  {
+    "path": "game\\schema\\action_tracker.js",
+    "lines": 128
+  },
+  {
+    "path": "constants\\difficulty-constants.js",
+    "lines": 121
+  },
+  {
+    "path": "game\\special-effects\\bombs.js",
+    "lines": 119
+  },
+  {
+    "path": "game\\game-controller-slim.js",
+    "lines": 118
+  },
+  {
+    "path": "game\\schema\\prng.js",
+    "lines": 115
+  },
+  {
+    "path": "game\\logic\\cards\\regen.js",
+    "lines": 113
+  },
+  {
+    "path": "game\\turn\\turn_pipeline.js",
+    "lines": 111
+  },
+  {
+    "path": "game-events.js",
+    "lines": 109
+  },
+  {
+    "path": "game\\logic\\position-weights.js",
+    "lines": 103
+  },
+  {
+    "path": "tests\\unit\\deterministic_init.test.js",
+    "lines": 101
+  },
+  {
+    "path": "ui\\handlers\\init.js",
+    "lines": 98
+  },
+  {
+    "path": "game\\move-executor.js",
+    "lines": 97
+  },
+  {
+    "path": "ui\\handlers\\sound.js",
+    "lines": 93
+  },
+  {
+    "path": "game\\logic\\cards\\selectors.js",
+    "lines": 92
+  },
+  {
+    "path": "game\\logic\\cards\\time_bomb.js",
+    "lines": 92
+  },
+  {
+    "path": "tests\\unit\\hyperactive_will.test.js",
+    "lines": 92
+  },
+  {
+    "path": "game\\special-effects\\udg.js",
+    "lines": 88
+  },
+  {
+    "path": "game\\logic\\cards\\chain.js",
+    "lines": 81
+  },
+  {
+    "path": "card-system.js",
+    "lines": 79
+  },
+  {
+    "path": "ui\\handlers\\smart.js",
+    "lines": 74
+  },
+  {
+    "path": "game\\logic\\cards\\flips.js",
+    "lines": 72
+  },
+  {
+    "path": "tests\\unit\\integration_hyperactive_regen_turnstart.test.js",
+    "lines": 67
+  },
+  {
+    "path": "game\\game-core-logic.js",
+    "lines": 63
+  },
+  {
+    "path": "tests\\unit\\cards_utils.test.js",
+    "lines": 63
+  },
+  {
+    "path": "game\\special-effects\\protections.js",
+    "lines": 62
+  },
+  {
+    "path": "ui\\handlers\\auto.js",
+    "lines": 62
+  },
+  {
+    "path": "game\\card-effects\\tempt.js",
+    "lines": 60
+  },
+  {
+    "path": "game\\logic\\cards\\utils.js",
+    "lines": 60
+  },
+  {
+    "path": "game\\card-effects\\helpers.js",
+    "lines": 58
+  },
+  {
+    "path": "game\\card-effects\\swap.js",
+    "lines": 57
+  },
+  {
+    "path": "game\\logic\\cards\\defs.js",
+    "lines": 57
+  },
+  {
+    "path": "tests\\unit\\integration_plunder_steal.test.js",
+    "lines": 57
+  },
+  {
+    "path": "ui\\handlers\\cpu-policy.js",
+    "lines": 57
+  },
+  {
+    "path": "game\\log-messages.js",
+    "lines": 56
+  },
+  {
+    "path": "tests\\unit\\cards_udg.test.js",
+    "lines": 56
+  },
+  {
+    "path": "animations\\card-draw-flow.js",
+    "lines": 53
+  },
+  {
+    "path": "tests\\unit\\board_ops.test.js",
+    "lines": 53
+  },
+  {
+    "path": "game\\card-effects\\destroy.js",
+    "lines": 51
+  },
+  {
+    "path": "game\\logic\\cards\\targets.js",
+    "lines": 51
+  },
+  {
+    "path": "tests\\unit\\destroy_swap.test.js",
+    "lines": 51
+  },
+  {
+    "path": "game\\logic\\effects\\swap_with_enemy.js",
+    "lines": 49
+  },
+  {
+    "path": "tests\\unit\\cards_time_bomb.test.js",
+    "lines": 48
+  },
+  {
+    "path": "tests\\unit\\core.test.js",
+    "lines": 48
+  },
+  {
+    "path": "game\\card-effects\\inherit.js",
+    "lines": 47
+  },
+  {
+    "path": "tests\\unit\\cards_flips.test.js",
+    "lines": 47
+  },
+  {
+    "path": "game\\controller-events.js",
+    "lines": 46
+  },
+  {
+    "path": "tests\\unit\\integration_immediate_effects.test.js",
+    "lines": 45
+  },
+  {
+    "path": "animations\\card-animation-utils.js",
+    "lines": 44
+  },
+  {
+    "path": "game\\special-effects\\helpers.js",
+    "lines": 44
+  },
+  {
+    "path": "tests\\unit\\cards_hyperactive.test.js",
+    "lines": 44
+  },
+  {
+    "path": "tests\\unit\\cards_selectors.test.js",
+    "lines": 44
+  },
+  {
+    "path": "animations\\card-animations-basic.js",
+    "lines": 43
+  },
+  {
+    "path": "tests\\test-helpers.js",
+    "lines": 43
+  },
+  {
+    "path": "tests\\unit\\cards_regen.test.js",
+    "lines": 42
+  },
+  {
+    "path": "tests\\unit\\cards_defs.test.js",
+    "lines": 39
+  },
+  {
+    "path": "game\\special-effects-handler.js",
+    "lines": 38
+  },
+  {
+    "path": "tests\\unit\\cards_get_flips_with_context.test.js",
+    "lines": 38
+  },
+  {
+    "path": "tests\\unit\\cards_breeding.test.js",
+    "lines": 37
+  },
+  {
+    "path": "tests\\unit\\cpu-decision.test.js",
+    "lines": 37
+  },
+  {
+    "path": "game\\logic\\effects\\destroy_one_stone.js",
+    "lines": 36
+  },
+  {
+    "path": "tests\\unit\\effects_countdown_semantics.test.js",
+    "lines": 36
+  },
+  {
+    "path": "scripts\\linecount.js",
+    "lines": 35
+  },
+  {
+    "path": "tests\\unit\\integration_gold_placement.test.js",
+    "lines": 35
+  },
+  {
+    "path": "tests\\unit\\turn_pipeline.test.js",
+    "lines": 35
+  },
+  {
+    "path": "game\\logic\\cards\\costs.js",
+    "lines": 34
+  },
+  {
+    "path": "tests\\unit\\cards_chain.test.js",
+    "lines": 34
+  },
+  {
+    "path": "tests\\unit\\cards_targets.test.js",
+    "lines": 33
+  },
+  {
+    "path": "cards\\catalog.js",
+    "lines": 31
+  },
+  {
+    "path": "constants\\animation-constants.js",
+    "lines": 31
+  },
+  {
+    "path": "tests\\unit\\double.test.js",
+    "lines": 31
+  },
+  {
+    "path": "tests\\unit\\integration_silver_placement.test.js",
+    "lines": 31
+  },
+  {
+    "path": "tests\\unit\\presentation_events_poc.test.js",
+    "lines": 26
+  },
+  {
+    "path": "scripts\\debug_tempt.js",
+    "lines": 25
+  },
+  {
+    "path": "tests\\unit\\dragon.test.js",
+    "lines": 24
+  },
+  {
+    "path": "tests\\unit\\time_bomb_flip_clears.test.js",
+    "lines": 24
+  },
+  {
+    "path": "game\\logic\\effects\\time_bomb.js",
+    "lines": 23
+  },
+  {
+    "path": "game\\logic\\effects\\ultimate_reverse_dragon.js",
+    "lines": 22
+  },
+  {
+    "path": "scripts\\debug_tempt3.js",
+    "lines": 22
+  },
+  {
+    "path": "game\\logic\\effects\\protected_next_stone.js",
+    "lines": 21
+  },
+  {
+    "path": "game\\logic\\effects\\steal_card.js",
+    "lines": 21
+  },
+  {
+    "path": "tests\\unit\\effects_swap_with_enemy.test.js",
+    "lines": 21
+  },
+  {
+    "path": "animations\\card-deck-visuals.js",
+    "lines": 20
+  },
+  {
+    "path": "game\\logic\\effects\\perma_protect_next_stone.js",
+    "lines": 20
+  },
+  {
+    "path": "scripts\\debug_tempt2.js",
+    "lines": 20
+  },
+  {
+    "path": "tests\\unit\\breeding.test.js",
+    "lines": 20
+  },
+  {
+    "path": "tests\\unit\\effects_breeding_module.test.js",
+    "lines": 19
+  },
+  {
+    "path": "ui\\ui-logging.js",
+    "lines": 19
+  },
+  {
+    "path": "game\\logic\\effects\\multiplier_stone.js",
+    "lines": 18
+  },
+  {
+    "path": "tests\\unit\\log_messages.test.js",
+    "lines": 18
+  },
+  {
+    "path": "game\\logic\\effects\\plunder_will.js",
+    "lines": 17
+  },
+  {
+    "path": "tests\\unit\\cards.test.js",
+    "lines": 17
+  },
+  {
+    "path": "tests\\unit\\effects_dragon_module.test.js",
+    "lines": 17
+  },
+  {
+    "path": "tests\\unit\\cards_costs.test.js",
+    "lines": 16
+  },
+  {
+    "path": "game\\logic\\effects\\double_place.js",
+    "lines": 15
+  },
+  {
+    "path": "scripts\\debug_double.js",
+    "lines": 15
+  },
+  {
+    "path": "tests\\unit\\extra_place_reset.test.js",
+    "lines": 15
+  },
+  {
+    "path": "game\\logic\\effects\\gold_stone.js",
+    "lines": 14
+  },
+  {
+    "path": "game\\logic\\effects\\silver_stone.js",
+    "lines": 14
+  },
+  {
+    "path": "tests\\unit\\effects_destroy_one_stone.test.js",
+    "lines": 14
+  },
+  {
+    "path": "tests\\unit\\effects_ultimate_dragon.test.js",
+    "lines": 14
+  },
+  {
+    "path": "tests\\unit\\perma_protect.test.js",
+    "lines": 14
+  },
+  {
+    "path": "tests\\unit\\protected_effect.test.js",
+    "lines": 14
+  },
+  {
+    "path": "tests\\unit\\time_bomb.test.js",
+    "lines": 13
+  },
+  {
+    "path": "game\\logic\\effects\\free_placement.js",
+    "lines": 12
+  },
+  {
+    "path": "tests\\unit\\plunder.test.js",
+    "lines": 12
+  },
+  {
+    "path": "tests\\unit\\steal_card.test.js",
+    "lines": 12
+  },
+  {
+    "path": "tests\\unit\\double_place.test.js",
+    "lines": 11
+  },
+  {
+    "path": "tests\\unit\\gold_effect.test.js",
+    "lines": 10
+  },
+  {
+    "path": "tests\\unit\\silver_effect.test.js",
+    "lines": 10
+  },
+  {
+    "path": "game\\card-effects-applier.js",
+    "lines": 9
+  },
+  {
+    "path": "ui\\event-handlers.js",
+    "lines": 9
+  },
+  {
+    "path": "tests\\unit\\effects_free_placement.test.js",
+    "lines": 8
+  },
+  {
+    "path": "debug\\debug-panel.js",
+    "lines": 1
+  },
+  {
+    "path": "scripts\\curate-dataset.js",
+    "lines": 1
+  },
+  {
+    "path": "scripts\\generate-dataset.js",
+    "lines": 1
+  },
+  {
+    "path": "utils\\owner-helpers.js",
+    "lines": 1
+  }
+]

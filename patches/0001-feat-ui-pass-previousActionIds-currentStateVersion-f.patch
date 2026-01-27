@@ -1,0 +1,211 @@
+From 81f72481d471f21bb114cf9cc48ae482f57237a6 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:24:24 +0900
+Subject: [PATCH] feat(ui): pass previousActionIds/currentStateVersion from
+ ActionManager into applyTurnSafe; add duplicate-action UI test
+
+---
+ game/turn/pipeline_ui_adapter.js              | 155 ++++++++++++++++++
+ ...ipeline_ui_adapter_action_tracking.test.js |  27 +++
+ 2 files changed, 182 insertions(+)
+ create mode 100644 game/turn/pipeline_ui_adapter.js
+ create mode 100644 tests/unit/pipeline_ui_adapter_action_tracking.test.js
+
+diff --git a/game/turn/pipeline_ui_adapter.js b/game/turn/pipeline_ui_adapter.js
+new file mode 100644
+index 0000000..44b2391
+--- /dev/null
++++ b/game/turn/pipeline_ui_adapter.js
+@@ -0,0 +1,155 @@
++/**
++ * @file pipeline_ui_adapter.js
++ * @description Bridge TurnPipeline event log -> browser UI via Canonical Playback Events.
++ * alings with 03-visual-rulebook.v2.txt.
++ */
++
++(function (root, factory) {
++    if (typeof module === 'object' && module.exports) {
++        module.exports = factory();
++    } else {
++        root.TurnPipelineUIAdapter = factory();
++    }
++}(typeof self !== 'undefined' ? self : this, function () {
++
++    /**
++     * Helper to get visual state of a cell from game/card state.
++     */
++    function getVisualStateAt(r, c, cardState, gameState) {
++        if (!gameState || !gameState.board) return { color: 0, special: null, timer: null };
++        const color = gameState.board[r][c];
++
++        // Find special stone
++        let special = null;
++        let timer = null;
++
++        if (cardState && cardState.specialStones) {
++            const s = cardState.specialStones.find(ss => ss.row === r && ss.col === c);
++            if (s) {
++                special = s.type;
++                timer = s.remainingOwnerTurns;
++            }
++        }
++
++        // Bomb check (legacy bombs might be separate)
++        if (!special && cardState && cardState.bombs) {
++            const b = cardState.bombs.find(bb => bb.row === r && bb.col === c);
++            if (b) {
++                special = 'TIME_BOMB';
++                timer = b.remainingTurns;
++            }
++        }
++
++        return { color, special, timer };
++    }
++
++    /**
++     * Converts presentation events (BoardOps output) into PlaybackEvents.
++     * This expects events to be JSON-safe presentationEvents as emitted by BoardOps.
++     */
++    function mapToPlaybackEvents(presEvents, finalCardState, finalGameState) {
++        const playbackEvents = [];
++        let currentPhase = 1;
++
++        for (const ev of presEvents || []) {
++            const pEvent = {
++                type: null,
++                phase: currentPhase,
++                targets: [],
++                after: {}, // plain object: "r,c" -> visual state
++                rawType: ev.type,
++                actionId: ev.actionId || null,
++                turnIndex: (typeof ev.turnIndex === 'number') ? ev.turnIndex : (finalCardState.turnIndex || 0),
++                plyIndex: (typeof ev.plyIndex === 'number') ? ev.plyIndex : null
++            };
++
++            switch (ev.type) {
++                case 'SPAWN':
++                    pEvent.type = 'spawn';
++                    pEvent.targets = [{ r: ev.row, col: ev.col, stoneId: ev.stoneId, ownerAfter: ev.ownerAfter }];
++                    break;
++                case 'DESTROY':
++                    pEvent.type = 'destroy';
++                    pEvent.targets = [{ r: ev.row, col: ev.col, stoneId: ev.stoneId, ownerBefore: ev.ownerBefore }];
++                    currentPhase++;
++                    pEvent.phase = currentPhase;
++                    break;
++                case 'CHANGE':
++                    pEvent.type = 'change';
++                    pEvent.targets = [{ r: ev.row, col: ev.col, ownerBefore: ev.ownerBefore, ownerAfter: ev.ownerAfter }];
++                    currentPhase++;
++                    pEvent.phase = currentPhase;
++                    break;
++                case 'MOVE':
++                    pEvent.type = 'move';
++                    pEvent.targets = [{ from: { r: ev.prevRow, c: ev.prevCol }, to: { r: ev.row, c: ev.col }, stoneId: ev.stoneId }];
++                    currentPhase++;
++                    pEvent.phase = currentPhase;
++                    break;
++                default:
++                    // Unknown presentation event -> log
++                    pEvent.type = 'log';
++                    pEvent.message = `PresentationEvent: ${ev.type}`;
++            }
++
++            // Populate 'after' states for each target using final snapshot
++            if (pEvent.type !== 'log') {
++                for (const t of pEvent.targets) {
++                    const r = t.r ?? t.to?.r;
++                    const c = t.col ?? t.to?.c ?? t.to?.col;
++                    if (r != null && c != null) {
++                        pEvent.after[`${r},${c}`] = getVisualStateAt(r, c, finalCardState, finalGameState);
++                    }
++                }
++            }
++
++            if (pEvent.type) playbackEvents.push(pEvent);
++        }
++
++        return playbackEvents;
++    }
++
++    /**
++     * Minimal adapter to run a placement via TurnPipeline and return both state and PlaybackEvents.
++     */
++    function runTurnWithAdapter(cardState, gameState, playerKey, action, turnPipeline) {
++        if (!turnPipeline) throw new Error('TurnPipeline not available');
++
++        // Build options for applyTurnSafe: include current state version and previous action ids if ActionManager is available
++        const options = {};
++        if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager && typeof ActionManager.ActionManager.getActions === 'function') {
++            try {
++                options.previousActionIds = ActionManager.ActionManager.getActions().map(a => a.actionId).filter(Boolean);
++            } catch (e) { /* ignore */ }
++        }
++        if (cardState && typeof cardState.turnIndex === 'number') {
++            options.currentStateVersion = cardState.turnIndex;
++        }
++
++        const result = (typeof turnPipeline.applyTurnSafe === 'function')
++            ? turnPipeline.applyTurnSafe(cardState, gameState, playerKey, action, undefined, options)
++            : turnPipeline.applyTurn(cardState, gameState, playerKey, action);
++
++        if (result.ok === false) {
++            return { ok: false, rejectedReason: result.rejectedReason || 'UNKNOWN', events: result.events };
++        }
++
++        // Prefer pipeline-produced presentationEvents when available
++        const pres = result.presentationEvents || result.cardState && result.cardState.presentationEvents || [];
++        const playbackEvents = mapToPlaybackEvents(pres, result.cardState, result.gameState);
++
++        return {
++            ok: true,
++            nextCardState: result.cardState,
++            nextGameState: result.gameState,
++            playbackEvents: playbackEvents,
++            rawEvents: result.events,
++            presentationEvents: pres
++        };
++    }
++
++    return {
++        mapToPlaybackEvents,
++        runTurnWithAdapter
++    };
++}));
+diff --git a/tests/unit/pipeline_ui_adapter_action_tracking.test.js b/tests/unit/pipeline_ui_adapter_action_tracking.test.js
+new file mode 100644
+index 0000000..f3256a7
+--- /dev/null
++++ b/tests/unit/pipeline_ui_adapter_action_tracking.test.js
+@@ -0,0 +1,27 @@
++const TurnPipeline = require('../../game/turn/turn_pipeline');
++const TurnPipelineUIAdapter = require('../../game/turn/pipeline_ui_adapter');
++const CardLogic = require('../../game/logic/cards');
++
++afterEach(() => {
++  // Clean up any test-injected ActionManager
++  if (typeof global !== 'undefined' && global.ActionManager) delete global.ActionManager;
++});
++
++test('runTurnWithAdapter forwards previousActionIds to applyTurnSafe and duplicate action is rejected', () => {
++  const cs = CardLogic.createCardState({ shuffle: arr => arr, random: () => 0 });
++  cs.turnIndex = 0;
++  const gs = { board: Array(8).fill(0).map(() => Array(8).fill(0)), currentPlayer: 1 };
++
++  // Prepare a duplicate action id scenario
++  const action = { type: 'place', actionId: 'dup-1', row: 2, col: 3, turnIndex: 0 };
++
++  // Inject a minimal ActionManager stub that reports previously-seen action ids
++  global.ActionManager = { ActionManager: { getActions: () => [{ actionId: 'dup-1' }] } };
++
++  const res = TurnPipelineUIAdapter.runTurnWithAdapter(cs, gs, 'black', action, TurnPipeline);
++
++  expect(res.ok).toBe(false);
++  expect(res.rejectedReason).toBe('DUPLICATE_ACTION');
++  expect(Array.isArray(res.events)).toBe(true);
++  expect(res.events.some(e => e.reason === 'DUPLICATE_ACTION')).toBe(true);
++});
+\ No newline at end of file
+-- 
+2.50.1.windows.1
+

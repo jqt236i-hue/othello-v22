@@ -1,0 +1,53 @@
+From dc78c1a6c1ea8f2ceab388125e58cbb7f94828b2 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:27:56 +0900
+Subject: [PATCH] test(reset): resetGame clears ActionManager storage
+
+---
+ .../reset_game_clears_action_manager.test.js  | 33 +++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+ create mode 100644 tests/unit/reset_game_clears_action_manager.test.js
+
+diff --git a/tests/unit/reset_game_clears_action_manager.test.js b/tests/unit/reset_game_clears_action_manager.test.js
+new file mode 100644
+index 0000000..6bb3999
+--- /dev/null
++++ b/tests/unit/reset_game_clears_action_manager.test.js
+@@ -0,0 +1,33 @@
++const AMModule = require('../../game/schema/action_manager');
++const TurnManager = require('../../game/turn-manager');
++
++beforeEach(() => {
++  const store = {};
++  global.localStorage = {
++    setItem: (k, v) => { store[k] = v; },
++    getItem: (k) => store[k] || null,
++    removeItem: (k) => { delete store[k]; },
++    clear: () => { for (const k in store) delete store[k]; }
++  };
++  global.ActionManager = AMModule;
++});
++
++afterEach(() => {
++  delete global.localStorage;
++  delete global.ActionManager;
++  AMModule.ActionManager.reset();
++});
++
++test('resetGame resets and clears ActionManager storage', () => {
++  // Seed an action and ensure it's saved
++  AMModule.ActionManager.recordAction({ actionId: 'test-1', turnIndex: 0 });
++  expect(AMModule.ActionManager.getActionCount()).toBeGreaterThan(0);
++
++  // Call resetGame (exports for tests)
++  TurnManager.resetGame();
++
++  // After reset, action count should be 0 and storage cleared
++  expect(AMModule.ActionManager.getActionCount()).toBe(0);
++  const stored = localStorage.getItem(AMModule.ActionManager._storageKey);
++  expect(stored === null || stored === undefined).toBe(true);
++});
+\ No newline at end of file
+-- 
+2.50.1.windows.1
+

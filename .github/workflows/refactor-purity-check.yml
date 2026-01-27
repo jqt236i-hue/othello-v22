@@ -1,0 +1,37 @@
+name: Refactor Purity Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch: {}
+
+jobs:
+  game-purity:
+    name: Game Purity Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run ui-writers check
+        run: npm run check:ui-writers
+
+      - name: Run game purity checks
+        run: npm run check:game-purity
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: purity-failure-logs
+          path: |
+            scripts/check_*.js
+            .

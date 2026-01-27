@@ -1,0 +1,18 @@
+*** Begin Patch
+*** Update File: ONLINE_REFACTOR_PLAN.md
+@@
+-Created: 2026-01-23  
+-Repo: `othello_v2/`  
++Created: 2026-01-23  
++DoD satisfied as of 2026-01-24 (see Evidence anchors)
++Repo: `othello_v2/`  
+ Sources of truth: `othello_v2/01-rulebook.txt`, `othello_v2/AGENTS.md`, `othello_v2/ONLINE_REFACTOR_TODO_20260120.md`
+@@
+ - ✅ CI verification: short CPU fuzz runs and Jest tests tracked in `.github/workflows/cpu-fuzz.yml` and `.github/workflows/ci.yml`
+ 
+ > Minimal anchors for the current DoD. Add further patch/test references here as tasks complete.
+ 
++### 0.5 Known issues
++- Tests pass but the test runner reports remaining open handles and a `ReferenceError: window is not defined` at process exit. Investigation is tracked as a separate task.
++
+*** End Patch

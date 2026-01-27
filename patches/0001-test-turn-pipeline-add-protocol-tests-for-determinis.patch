@@ -1,0 +1,278 @@
+From 32a54ba25b61059bb70ba83f8b53908018a490f8 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:18:16 +0900
+Subject: [PATCH] test(turn-pipeline): add protocol tests for
+ determinism/dup/out-of-order/version/serialize; impl guards and stateHash in
+ applyTurnSafe
+
+---
+ game/turn/turn_pipeline.js           | 157 +++++++++++++++++++++++++++
+ tests/unit/pipeline_protocol.test.js |  92 ++++++++++++++++
+ 2 files changed, 249 insertions(+)
+ create mode 100644 game/turn/turn_pipeline.js
+ create mode 100644 tests/unit/pipeline_protocol.test.js
+
+diff --git a/game/turn/turn_pipeline.js b/game/turn/turn_pipeline.js
+new file mode 100644
+index 0000000..3fbfdf4
+--- /dev/null
++++ b/game/turn/turn_pipeline.js
+@@ -0,0 +1,157 @@
++/**
++ * @file turn_pipeline.js
++ * @description Pure turn driver used by headless tests. UMD化してブラウザでも window.TurnPipeline.applyTurn として利用できるようにした。
++ */
++
++(function (root, factory) {
++    if (typeof module === 'object' && module.exports) {
++        module.exports = factory(
++            require('../logic/cards'),
++            require('../logic/core'),
++            require('./turn_pipeline_phases'),
++            require('../logic/board_ops')
++        );
++    } else {
++        root.TurnPipeline = factory(root.CardLogic, root.Core || root.CoreLogic, root.TurnPipelinePhases, root.BoardOps);
++    }
++}(typeof self !== 'undefined' ? self : this, function (CardLogic, Core, TurnPipelinePhases, BoardOps) {
++    if (!CardLogic || !Core) {
++        throw new Error('TurnPipeline: CardLogic/Core is not available.');
++    }
++    if (!TurnPipelinePhases) {
++        throw new Error('TurnPipeline: TurnPipelinePhases is not available.');
++    }
++
++    /**
++     * Apply a single action within a turn, following a fixed turn pipeline.
++     * - action: { type: 'place' | 'pass', row?, col?, useCardId?, destroyTarget?: {row:number,col:number}, temptTarget?, inheritTarget? }
++     * - If useCardId is provided it will be applied before placement (consuming charge/hand)
++     * Returns { gameState, cardState, events }
++     *
++     * Note: Originally headless-only. Now UMD so the browser can call the same pipeline.
++     */
++    function applyTurn(cardState, gameState, playerKey, action, prng) {
++        const events = [];
++        const p = prng || undefined;
++
++        // 1) Turn start processing
++        TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, playerKey, events, p);
++
++        // 2) Card usage (optional)
++        TurnPipelinePhases.applyCardUsagePhase(CardLogic, cardState, gameState, playerKey, action, events);
++
++        // 3) Action
++    // Attach action meta to cardState so BoardOps and other helpers can populate presentationEvents with action metadata
++    const actionMeta = { actionId: action && action.actionId ? action.actionId : null, turnIndex: cardState.turnIndex || 0, plyIndex: 0 };
++    cardState._currentActionMeta = actionMeta;
++    try {
++        TurnPipelinePhases.applyActionPhase(CardLogic, Core, cardState, gameState, playerKey, action, events, p, BoardOps);
++    } finally {
++        delete cardState._currentActionMeta;
++    }
++
++        // Collect presentation events produced during phases
++        const presentationEvents = (typeof CardLogic.flushPresentationEvents === 'function')
++            ? CardLogic.flushPresentationEvents(cardState)
++            : (cardState.presentationEvents || []).slice();
++
++        return { gameState, cardState, events, presentationEvents };
++    }
++
++    /**
++     * Safe wrapper for applyTurn for online/server usage.
++     * - Never mutates input objects (clones before applying)
++     * - Never throws; returns ok=false with a reason code instead
++     * - Returns full Result schema with nextStateVersion
++     *
++     * @param {object} cardState
++     * @param {object} gameState
++     * @param {string} playerKey
++     * @param {object} action
++     * @param {object} prng
++     * @param {object} [options] - Optional settings
++     * @param {number} [options.currentStateVersion] - Current state version
++     * @returns {{ ok: boolean, gameState: object, cardState: object, events: Array, nextStateVersion: number, rejectedReason?: string, errorMessage?: string }}
++     */
++    function applyTurnSafe(cardState, gameState, playerKey, action, prng, options) {
++        const clone = (obj) => JSON.parse(JSON.stringify(obj));
++        const cs = clone(cardState);
++        const gs = clone(gameState);
++        const currentVersion = (options && typeof options.currentStateVersion === 'number')
++            ? options.currentStateVersion
++            : 0;
++
++        // Protocol guards (duplicate/out-of-order/version mismatch)
++        if (action && action.actionId && options && Array.isArray(options.previousActionIds)) {
++            if (options.previousActionIds.includes(action.actionId)) {
++                const events = [{ type: 'action_rejected', player: playerKey, reason: 'DUPLICATE_ACTION', message: 'actionId already seen' }];
++                return { ok: false, gameState: gs, cardState: cs, events, nextStateVersion: currentVersion, rejectedReason: 'DUPLICATE_ACTION' };
++            }
++        }
++        if (action && typeof action.turnIndex === 'number' && options && typeof options.currentStateVersion === 'number') {
++            if (action.turnIndex !== options.currentStateVersion) {
++                const events = [{ type: 'action_rejected', player: playerKey, reason: 'OUT_OF_ORDER', message: 'action.turnIndex does not match currentStateVersion' }];
++                return { ok: false, gameState: gs, cardState: cs, events, nextStateVersion: currentVersion, rejectedReason: 'OUT_OF_ORDER' };
++            }
++        }
++        if (options && typeof options.expectedStateVersion === 'number') {
++            if (options.expectedStateVersion !== currentVersion) {
++                const events = [{ type: 'action_rejected', player: playerKey, reason: 'VERSION_MISMATCH', message: 'expectedStateVersion mismatch' }];
++                return { ok: false, gameState: gs, cardState: cs, events, nextStateVersion: currentVersion, rejectedReason: 'VERSION_MISMATCH' };
++            }
++        }
++
++        try {
++            const res = applyTurn(cs, gs, playerKey, action, prng);
++
++            // Validate resulting state
++            const StateValidator = require('../schema/state_validator');
++            const validation = StateValidator.validateState(res.gameState, res.cardState);
++            if (!validation.valid) {
++                const events = [{ type: 'action_rejected', player: playerKey, reason: 'INVALID_STATE', message: 'State validation failed', details: validation.errors }];
++                return { ok: false, gameState: gs, cardState: cs, events, nextStateVersion: currentVersion, rejectedReason: 'INVALID_STATE', errorMessage: 'State validation failed' };
++            }
++
++            // Increment version on success
++            const nextStateVersion = currentVersion + 1;
++
++            // Compute stateHash synchronously for protocol compliance
++            const ResultSchema = require('../schema/result');
++            const prngState = (options && options.prngState) ? options.prngState : (prng && prng._seed ? { _seed: prng._seed } : null);
++            const hashable = ResultSchema.extractHashableState(res.gameState, res.cardState, prngState);
++            const stateHash = ResultSchema.computeStateHashSync(hashable);
++
++            return {
++                ok: true,
++                gameState: res.gameState,
++                cardState: res.cardState,
++                events: res.events,
++                presentationEvents: res.presentationEvents || [],
++                nextStateVersion,
++                stateHash
++            };
++        } catch (e) {
++            const msg = (e && e.message) ? String(e.message) : 'unknown_error';
++            // Keep reason codes short/stable for protocol usage.
++            let reason = 'UNKNOWN';
++            if (msg.includes('Illegal move')) reason = 'ILLEGAL_MOVE';
++            else if (msg.includes('applyCardUsage failed')) reason = 'CARD_USE_FAILED';
++            else if (msg.includes('requires')) reason = 'MISSING_REQUIRED_TARGET';
++            else if (msg.includes('Unknown action.type')) reason = 'UNKNOWN_ACTION_TYPE';
++
++            const events = [{ type: 'action_rejected', player: playerKey, reason, message: msg }];
++            // Do not increment version on rejection
++            return {
++                ok: false,
++                gameState: gs,
++                cardState: cs,
++                events,
++                nextStateVersion: currentVersion,
++                rejectedReason: reason,
++                errorMessage: msg
++            };
++        }
++    }
++
++    return { applyTurn, applyTurnSafe };
++}));
+diff --git a/tests/unit/pipeline_protocol.test.js b/tests/unit/pipeline_protocol.test.js
+new file mode 100644
+index 0000000..db27a6f
+--- /dev/null
++++ b/tests/unit/pipeline_protocol.test.js
+@@ -0,0 +1,92 @@
++const TurnPipeline = require('../../game/turn/turn_pipeline');
++const SeededPRNG = require('../../game/schema/prng');
++const CardLogic = require('../../game/logic/cards');
++const Core = require('../../game/logic/core');
++const ResultSchema = require('../../game/schema/result');
++const { createMockPrng } = require('../test-helpers');
++
++describe('TurnPipeline protocol guarantees', () => {
++  test('determinism: same seed + same actions => same stateHash', () => {
++    const seed = 12345;
++    const prng1 = SeededPRNG.createPRNG(seed);
++    const cs1 = CardLogic.createCardState(prng1);
++    const gs1 = Core.createGameState();
++
++    const res1 = TurnPipeline.applyTurnSafe(cs1, gs1, 'black', { type: 'pass' }, prng1, { currentStateVersion: 0, prngState: { _seed: seed } });
++    expect(res1.ok).toBe(true);
++    expect(res1.stateHash).toBeDefined();
++
++    const prng2 = SeededPRNG.createPRNG(seed);
++    const cs2 = CardLogic.createCardState(prng2);
++    const gs2 = Core.createGameState();
++
++    const res2 = TurnPipeline.applyTurnSafe(cs2, gs2, 'black', { type: 'pass' }, prng2, { currentStateVersion: 0, prngState: { _seed: seed } });
++    expect(res2.ok).toBe(true);
++    expect(res2.stateHash).toBeDefined();
++
++    expect(res1.stateHash).toBe(res2.stateHash);
++  });
++
++  test('duplicate actionId is rejected when previousActionIds includes it', () => {
++    const prng = createMockPrng(1);
++    const cs = CardLogic.createCardState(prng);
++    const gs = Core.createGameState();
++
++    const action = { type: 'pass', actionId: 'a-dup' };
++    const res = TurnPipeline.applyTurnSafe(cs, gs, 'black', action, prng, { currentStateVersion: 0, previousActionIds: ['a-dup'] });
++    expect(res.ok).toBe(false);
++    expect(res.rejectedReason).toBe('DUPLICATE_ACTION');
++  });
++
++  test('out-of-order action (turnIndex mismatch) is rejected', () => {
++    const prng = createMockPrng(2);
++    const cs = CardLogic.createCardState(prng);
++    const gs = Core.createGameState();
++
++    const action = { type: 'place', turnIndex: 5, row: 2, col: 3 };
++    const res = TurnPipeline.applyTurnSafe(cs, gs, 'black', action, prng, { currentStateVersion: 1 });
++    expect(res.ok).toBe(false);
++    expect(res.rejectedReason).toBe('OUT_OF_ORDER');
++  });
++
++  test('version mismatch leads to rejection', () => {
++    const prng = createMockPrng(3);
++    const cs = CardLogic.createCardState(prng);
++    const gs = Core.createGameState();
++
++    const action = { type: 'pass' };
++    const res = TurnPipeline.applyTurnSafe(cs, gs, 'black', action, prng, { currentStateVersion: 0, expectedStateVersion: 5 });
++    expect(res.ok).toBe(false);
++    expect(res.rejectedReason).toBe('VERSION_MISMATCH');
++  });
++
++  test('StateValidator validates post-ok states', () => {
++    const prng = createMockPrng(4);
++    const cs = CardLogic.createCardState(prng);
++    const gs = Core.createGameState();
++
++    const res = TurnPipeline.applyTurnSafe(cs, gs, 'black', { type: 'pass' }, prng, { currentStateVersion: 0 });
++    expect(res.ok).toBe(true);
++    const validation = require('../../game/schema/state_validator').validateState(res.gameState, res.cardState);
++    expect(validation.valid).toBe(true);
++  });
++
++  test('serialize/deserialize preserves stateHash equality (including prngState)', () => {
++    const seed = 4242;
++    const prng = SeededPRNG.createPRNG(seed);
++    const cs = CardLogic.createCardState(prng);
++    const gs = Core.createGameState();
++
++    const res = TurnPipeline.applyTurnSafe(cs, gs, 'black', { type: 'pass' }, prng, { currentStateVersion: 0, prngState: { _seed: seed } });
++    expect(res.ok).toBe(true);
++
++    const hash1 = res.stateHash;
++
++    const serialized = JSON.stringify({ gameState: res.gameState, cardState: res.cardState, prngState: { _seed: seed } });
++    const parsed = JSON.parse(serialized);
++
++    const hashable = ResultSchema.extractHashableState(parsed.gameState, parsed.cardState, parsed.prngState);
++    const hash2 = ResultSchema.computeStateHashSync(hashable);
++    expect(hash1).toBe(hash2);
++  });
++});
+-- 
+2.50.1.windows.1
+

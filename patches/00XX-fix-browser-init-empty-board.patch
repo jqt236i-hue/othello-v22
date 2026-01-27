@@ -1,0 +1,192 @@
+Subject: 00XX - Fix browser init empty-board crash (cards.js:1471)
+
+Summary:
+- This patch provides a minimal, focused set of changes to prevent an initial-render crash caused by CardLogic helpers being invoked on a missing or incomplete `cardState` during page startup (observed at cards.js:1471).
+- Changes are intentionally minimal and localized to preserve single-writer semantics and keep surface area small.
+
+Files changed (one-line justification each):
+- ui/diff-renderer.js: Add single-site guard so render uses a safe empty CardContext when `cardState` is missing, preventing immediate throws during early init.
+- game/move-generator.js: Prefer caller-provided protection arrays and catch CardLogic.getCardContext errors (fallback to safe context) to avoid crashing on incomplete `cardState`.
+- game/logic/cards.js: Make pendingEffectByPlayer access defensive to avoid reading properties when `cardState` lacks expected shape.
+- game/turn-manager.js: Add small fallback in `resetGame()` to bootstrap `cardState` via `CardLogic.createCardState()` only when `initCardState()` is unavailable—keeps bootstrapping within game logic (single-writer) and prevents empty-board cases on reset.
+- ui/handlers/init.js: **Reverted UI-side bootstrap** (removed a direct `window.cardState` injection); left only a try/catch around calling `resetGame()` to preserve the UI's read-only role.
+
+Why these five files? Each addresses a specific step in the init/render path where the crash can manifest:
+1) DiffRenderer calls CardLogic helpers during render — UI-side guard prevents crash. ✅
+2) Move generator delegates to CardLogic — defensive fallback prevents propagation of errors. ✅
+3) Cards helpers assume pending structure — guard avoids reading undefined fields. ✅
+4) Reset game is the canonical place to create authoritative rule state — a minimal bootstrap here avoids UI needing to write rule state. ✅
+5) Reverting UI bootstrap preserves single-writer invariants and prevents masking underlying initialization order bugs. ✅
+
+--- a/ui/diff-renderer.js
++++ b/ui/diff-renderer.js
+@@
+-    const context = CardLogic.getCardContext(cardState);
++    let context;
++    if (cardState && Array.isArray(cardState.specialStones) && Array.isArray(cardState.bombs)) {
++        context = CardLogic.getCardContext(cardState);
++    } else {
++        console.warn('[DiffRenderer] cardState missing or incomplete — using empty CardContext to continue rendering');
++        context = { protectedStones: [], permaProtectedStones: [], bombs: [] };
++    }
+@@
+-    const legalMoves = showLegalHints ? getLegalMoves(gameState, player, context) : [];
++    const legalMoves = showLegalHints ? getLegalMoves(gameState, context.protectedStones, context.permaProtectedStones) : [];
+---
+--- a/game/move-generator.js
++++ b/game/move-generator.js
+@@
+-    let context;
+-    if (typeof CardLogic !== 'undefined' && typeof cardState !== 'undefined') {
+-        context = CardLogic.getCardContext(cardState);
+-    } else {
+-        context = {
+-            protectedStones: protectedStones || [],
+-            permaProtectedStones: permaProtectedStones || [],
+-            bombs: (typeof cardState !== 'undefined' && cardState.bombs) ? cardState.bombs : []
+-        };
+-    }
++    let context;
++    if (typeof CardLogic !== 'undefined' && typeof cardState !== 'undefined') {
++        try {
++            if (Array.isArray(protectedStones) && Array.isArray(permaProtectedStones)) {
++                context = {
++                    protectedStones: protectedStones,
++                    permaProtectedStones: permaProtectedStones,
++                    bombs: (cardState && cardState.bombs) ? cardState.bombs : []
++                };
++            } else {
++                context = CardLogic.getCardContext(cardState);
++            }
++        } catch (e) {
++            console.warn('[getLegalMoves] CardLogic.getCardContext threw — falling back to safe context:', e && e.message);
++            context = {
++                protectedStones: protectedStones || [],
++                permaProtectedStones: permaProtectedStones || [],
++                bombs: (cardState && cardState.bombs) ? cardState.bombs : []
++            };
++        }
++    } else {
++        context = {
++            protectedStones: protectedStones || [],
++            permaProtectedStones: permaProtectedStones || [],
++            bombs: (typeof cardState !== 'undefined' && cardState.bombs) ? cardState.bombs : []
++        };
++    }
+---
+--- a/game/logic/cards.js
++++ b/game/logic/cards.js
+@@
+-    const pending = cardState.pendingEffectByPlayer[playerKey];
+-    if (!pending) return [];
++    const pending = (cardState && cardState.pendingEffectByPlayer) ? cardState.pendingEffectByPlayer[playerKey] : null;
++    if (!pending) return [];
+---
+--- a/game/turn-manager.js
++++ b/game/turn-manager.js
+@@
+-    }
++    }
++
++    // If initCardState was not present at all (e.g., CardSystem not loaded), create a minimal cardState here.
++    if ((typeof window !== 'undefined' && !window.cardState) || (typeof cardState === 'undefined')) {
++        if (typeof CardLogic !== 'undefined' && typeof CardLogic.createCardState === 'function') {
++            console.warn('[resetGame] initCardState not defined — bootstrapping cardState via CardLogic.createCardState()');
++            const prngStub = { next: () => 0.5, _seed: Date.now() };
++            const newState = CardLogic.createCardState(prngStub);
++            if (typeof window !== 'undefined') {
++                window.cardState = newState;
++            } else {
++                global.cardState = newState;
++            }
++        }
++    }
+---
+--- a/ui/handlers/init.js
++++ b/ui/handlers/init.js
+@@
+-    try {
+-        if (typeof resetGame === 'function') resetGame();
+-    } catch (e) { console.error('[init] resetGame threw', e && e.message); }
+-
+-    // If cardState is still missing after reset, bootstrap a minimal shape so the UI can render
+-    if (typeof window !== 'undefined' && !window.cardState) {
+-        if (typeof CardLogic !== 'undefined' && typeof CardLogic.createCardState === 'function') {
+-            console.warn('[init] cardState missing after reset — bootstrapping via CardLogic.createCardState()');
+-            const prngStub = { next: () => 0.5, _seed: Date.now() };
+-            window.cardState = CardLogic.createCardState(prngStub);
+-        } else {
+-            console.warn('[init] cardState missing and CardLogic unavailable — injecting minimal cardState for safe render');
+-            window.cardState = {
+-                specialStones: [],
+-                bombs: [],
+-                pendingEffectByPlayer: { black: null, white: null },
+-                hands: { black: [], white: [] },
+-                charge: { black: 0, white: 0 },
+-                markers: [],
+-                presentationEvents: [],
+-                stoneIdMap: {}
+-            };
+-        }
+-    }
++    try {
++        if (typeof resetGame === 'function') resetGame();
++    } catch (e) { console.error('[init] resetGame threw', e && e.message); }
++
++    // NOTE: Do NOT inject or write to `window.cardState` from UI init here to preserve the
++    // single-writer invariant. Reset/bootstrapping is handled in `resetGame()` when needed.
+---
+
+Tests added:
+- tests/unit/browser_bootstrap_missing_cardstate.test.js
+  - Ensures that initial render (calling `buildCurrentCellState`) does not throw when `cardState` is missing.
+
+How to verify (recommended):
+- npm run check:ui-writers
+- npm run test:jest -i
+- (optional) npm run test:e2e using http-server to validate a full browser flow.
+
+Notes:
+- The UI no longer writes `cardState` directly; the small `resetGame()` bootstrap keeps rule-state writes in game logic (single-writer).
+- The guard in `ui/diff-renderer.js` is intentionally minimal and localized — it prevents the immediate crash while preserving normal path once `cardState` becomes available.
+
+
+---
+
+Additional fixes applied in this iteration (small, single-responsibility changes):
+- M cpu/cpu-turn.js
+  - Removed stray top-level duplicated block that caused early SyntaxError/parse failures and implemented `processAutoBlackTurn` body symmetrically to `processCpuTurn`.
+- M game/turn-manager.js
+  - Avoid redeclaring global lock variables using `var` (which conflicted with lexical `let` elsewhere). Initialize `window`/`global` lock flags safely to prevent `Identifier 'isProcessing' has already been declared`.
+- M cards/card-renderer.js
+  - Fix typo `cs` -> `cardState` at the active-effects rendering site which raised `ReferenceError: cs is not defined` during initial board render.
+
+Evidence (captured during verification):
+- Console stack trace that pointed to the cards bug:
+  Error in event handler for boardUpdated: ReferenceError: cs is not defined
+      at renderCardUI (http://localhost:8000/cards/card-renderer.js:146:29)
+      at renderBoard (http://localhost:8000/ui/board-renderer.js:44:5)
+      at http://localhost:8000/ui.js:45:9
+      at http://localhost:8000/game-events.js:51:17
+      at Array.forEach (<anonymous>)
+      at GameEventEmitter.emit (http://localhost:8000/game-events.js:49:35)
+      at emitGameEvent (http://localhost:8000/game/controller-events.js:10:31)
+      at emitBoardUpdate (http://localhost:8000/game/controller-events.js:23:5)
+      at resetGame (http://localhost:8000/game/turn-manager.js:179:5)
+      at HTMLDocument.initializeUI (http://localhost:8000/ui/handlers/init.js:79:46)
+
+- Final verification output (after applying all three fixes) from `node scripts/debug_browser_init.js`:
+  No console.error observed on page.
+
+- Final snippet result (JSON):
+{
+  "hasBoardEl": false,
+  "cellCount": 64,
+  "hasGameState": true,
+  "hasCardState": true,
+  "hasHandleCellClick": "function",
+  "hasResetGame": "function",
+  "currentPlayer": 1
+}
+
+END PATCH

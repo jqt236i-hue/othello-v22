@@ -1,0 +1,89 @@
+From f4477beb022ff6fd747e0c4e5e8cf42b551b537f Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:27:06 +0900
+Subject: [PATCH] feat(action-manager): reconcileWithServer helper + tests
+
+---
+ game/schema/action_manager.js               | 22 +++++++++++++
+ tests/unit/action_manager_reconcile.test.js | 35 +++++++++++++++++++++
+ 2 files changed, 57 insertions(+)
+ create mode 100644 tests/unit/action_manager_reconcile.test.js
+
+diff --git a/game/schema/action_manager.js b/game/schema/action_manager.js
+index 691a15e..cfe41a8 100644
+--- a/game/schema/action_manager.js
++++ b/game/schema/action_manager.js
+@@ -149,6 +149,28 @@
+             try { this.saveToStorage(); } catch (e) { /* ignore */ }
+         },
+ 
++        /**
++         * Reconcile local actions with server-known actionIds.
++         * Marks locally-known actions that the server already has as acknowledged and
++         * returns the local actions that are missing on the server (to be uploaded).
++         * @param {Array<string>} serverActionIds
++         * @returns {Array} local actions missing on server
++         */
++        reconcileWithServer(serverActionIds) {
++            if (!Array.isArray(serverActionIds)) serverActionIds = [];
++            const missing = [];
++            for (const a of this._actions) {
++                if (serverActionIds.includes(a.actionId)) {
++                    a.acknowledged = true;
++                } else {
++                    missing.push({ ...a });
++                }
++            }
++            try { this.saveToStorage(); } catch (e) { /* ignore */ }
++            return missing;
++        },
++
++
+         /**
+          * Get actions for export (minimal format for replay)
+          * @returns {Array}
+diff --git a/tests/unit/action_manager_reconcile.test.js b/tests/unit/action_manager_reconcile.test.js
+new file mode 100644
+index 0000000..7f54d30
+--- /dev/null
++++ b/tests/unit/action_manager_reconcile.test.js
+@@ -0,0 +1,35 @@
++const AMModule = require('../../game/schema/action_manager');
++const ActionManager = AMModule.ActionManager;
++
++afterEach(() => {
++  if (typeof global.localStorage !== 'undefined') {
++    try { localStorage.clear(); } catch (e) { }
++    delete global.localStorage;
++  }
++  ActionManager.reset();
++});
++
++test('reconcileWithServer marks acknowledged and returns missing actions', () => {
++  const store = {};
++  global.localStorage = {
++    setItem: (k, v) => { store[k] = v; },
++    getItem: (k) => store[k] || null,
++    removeItem: (k) => { delete store[k]; },
++    clear: () => { for (const k in store) delete store[k]; }
++  };
++
++  ActionManager.recordAction({ actionId: 'a1', turnIndex: 0 });
++  ActionManager.recordAction({ actionId: 'a2', turnIndex: 1 });
++  ActionManager.recordAction({ actionId: 'a3', turnIndex: 2 });
++
++  const missing = ActionManager.reconcileWithServer(['a2','a99']);
++  // a2 acknowledged, missing should include a1 and a3
++  const missingIds = missing.map(a => a.actionId).sort();
++  expect(missingIds).toEqual(['a1','a3']);
++
++  const unacked = ActionManager.getUnacknowledgedActions().map(a => a.actionId).sort();
++  expect(unacked).toEqual(['a1','a3']);
++
++  // a2 should be acknowledged
++  expect(ActionManager.getActions().some(a => a.actionId === 'a2' && a.acknowledged)).toBe(true);
++});
+\ No newline at end of file
+-- 
+2.50.1.windows.1
+

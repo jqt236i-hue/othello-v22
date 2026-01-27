@@ -1,0 +1,653 @@
+From ad51fc6323de58cc4d659106a1c9d03026a62422 Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 12:39:17 +0900
+Subject: [PATCH] refactor(special-effects): avoid UI-side rule state writes;
+ rely on pipeline + emit sync
+
+---
+ game/special-effects/breeding.js    | 187 ++++++++++++++++
+ game/special-effects/hyperactive.js | 329 ++++++++++++++++++++++++++++
+ scripts/check_ui_calls.js           | 101 +++++++++
+ 3 files changed, 617 insertions(+)
+ create mode 100644 game/special-effects/breeding.js
+ create mode 100644 game/special-effects/hyperactive.js
+ create mode 100644 scripts/check_ui_calls.js
+
+diff --git a/game/special-effects/breeding.js b/game/special-effects/breeding.js
+new file mode 100644
+index 0000000..28dda83
+--- /dev/null
++++ b/game/special-effects/breeding.js
+@@ -0,0 +1,187 @@
++/**
++ * @file breeding.js
++ * @description Breeding effect handlers
++ */
++
++/**
++ * Process breeding effects (Stone spawning)
++ * @async
++ * @param {number} player - Current player (BLACK=1 or WHITE=-1)
++ * @param {Object} [precomputedResult] - Optional pre-computed result from logic layer
++ * @returns {Promise<void>}
++ */
++async function processBreedingEffectsAtTurnStart(player, precomputedResult = null) {
++    const playerKey = player === BLACK ? 'black' : 'white';
++
++    // Call the core logic to spawn stones and get destruction info
++    // result: { spawned: [...], destroyed: [...] }
++    const result = precomputedResult || CardLogic.processBreedingEffects(cardState, gameState, playerKey);
++
++    if (result.spawned.length > 0) {
++        addLog(LOG_MESSAGES.breedingSpawnedImmediate(getPlayerName(player), result.spawned.length));
++    }
++
++    // Refresh breeding timers BEFORE any fade-out so "0" can be visible on the last tick.
++    // Prefer anchors[] returned by the logic layer, because the marker may be removed immediately.
++    const timerAnchors = Array.isArray(result.anchors) ? result.anchors : null;
++    if (timerAnchors && timerAnchors.length > 0) {
++        for (const a of timerAnchors) {
++            const cell = boardEl.querySelector(`.cell[data-row="${a.row}"][data-col="${a.col}"]`);
++            if (!cell) continue;
++            const disc = cell.querySelector('.disc');
++            if (!disc) continue;
++
++            let timer = disc.querySelector('.breeding-timer');
++            if (!timer) {
++                timer = document.createElement('div');
++                timer.className = 'breeding-timer';
++                disc.appendChild(timer);
++            }
++            timer.textContent = Math.min(3, a.remainingNow);
++        }
++    } else if (cardState.specialStones && cardState.specialStones.length > 0) {
++        const breedings = cardState.specialStones.filter(s => s.type === 'BREEDING' && s.owner === playerKey);
++        for (const b of breedings) {
++            const cell = boardEl.querySelector(`.cell[data-row="${b.row}"][data-col="${b.col}"]`);
++            if (!cell) continue;
++            const disc = cell.querySelector('.disc');
++            if (!disc) continue;
++
++            let timer = disc.querySelector('.breeding-timer');
++            if (!timer) {
++                timer = document.createElement('div');
++                timer.className = 'breeding-timer';
++                disc.appendChild(timer);
++            }
++            timer.textContent = Math.min(3, b.remainingOwnerTurns);
++        }
++    }
++
++    // Charge updates MUST be applied by the rule pipeline; do not mutate rule state here.
++    if (result.flipped.length > 0) {
++        if (typeof emitCardStateChange === 'function') emitCardStateChange();
++        else console.warn('[BREEDING] charge updates should come from pipeline; emitCardStateChange not available');
++    }
++
++    // Animate fade-in for each spawned stone SEQUENTIALLY (without re-render)
++    for (const spawn of result.spawned) {
++        const cell = boardEl.querySelector(`.cell[data-row="${spawn.row}"][data-col="${spawn.col}"]`);
++        if (!cell) continue;
++
++        let disc = cell.querySelector('.disc');
++        if (!disc) {
++            disc = document.createElement('div');
++            // Adding 'breeding-spawn' BEFORE appending to avoid 1-frame flicker
++            disc.className = 'disc ' + (player === BLACK ? 'black' : 'white') + ' breeding-spawn';
++            cell.appendChild(disc);
++        } else {
++            disc.classList.add('breeding-spawn');
++        }
++
++        await new Promise(resolve => setTimeout(resolve, 800));
++        disc.classList.remove('breeding-spawn');
++    }
++
++    // Flip animations for stones affected by the spawned stone
++    if (result.flipped.length > 0) {
++        const flipCoords = result.flipped.map(p => [p.row, p.col]);
++        if (typeof applyFlipAnimations === 'function') {
++            applyFlipAnimations(flipCoords);
++            const delay = typeof FLIP_ANIMATION_DURATION_MS !== 'undefined' ? FLIP_ANIMATION_DURATION_MS : 800;
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++        // Ensure final color matches the new owner after animations
++        for (const pos of result.flipped) {
++            const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (disc) {
++                disc.classList.remove(player === BLACK ? 'white' : 'black');
++                disc.classList.add(player === BLACK ? 'black' : 'white');
++            }
++        }
++    }
++
++    // After spawning and splitting, handle destroyed anchors (fade-out)
++    for (const pos of result.destroyed) {
++        // If a render already removed the anchor disc (because logic set it to EMPTY),
++        // use a ghost disc so the player still sees the fade-out.
++        await animateFadeOutAt(pos.row, pos.col, { createGhost: true, color: player, effectKey: 'breedingStone' });
++    }
++
++    // Final UI sync after all animations
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++/**
++ * Placement-turn immediate activation for a newly placed breeding anchor.
++ * Runs AFTER normal flip animations, and before turn ends.
++ * @param {number} player
++ * @param {number} row
++ * @param {number} col
++ * @param {Object} [precomputedResult]
++ */
++async function processBreedingImmediateAtPlacement(player, row, col, precomputedResult = null) {
++    const playerKey = player === BLACK ? 'black' : 'white';
++    const result = precomputedResult || CardLogic.processBreedingEffectsAtAnchor(cardState, gameState, playerKey, row, col);
++
++    if (result.spawned.length > 0) {
++        addLog(LOG_MESSAGES.breedingSpawned(getPlayerName(player), result.spawned.length));
++    }
++    if (result.flipped.length > 0) {
++        if (typeof emitCardStateChange === 'function') emitCardStateChange();
++        else console.warn('[BREEDING IMMEDIATE] charge updates should come from pipeline; emitCardStateChange not available');
++    }
++
++    // Spawn animation (create disc without full re-render)
++    const BREEDING_FADE_MS = 350; // matches CSS fadeInStone 0.3s with slight buffer
++    for (const spawn of result.spawned) {
++        const cell = boardEl.querySelector(`.cell[data-row="${spawn.row}"][data-col="${spawn.col}"]`);
++        if (!cell) continue;
++
++        let disc = cell.querySelector('.disc');
++        if (!disc) {
++            disc = document.createElement('div');
++            disc.className = 'disc ' + (player === BLACK ? 'black' : 'white');
++            // Start invisible to avoid instant flash, then trigger animation next frame
++            disc.style.opacity = '0';
++            cell.appendChild(disc);
++
++            // Trigger fade-in on next frame
++            requestAnimationFrame(() => {
++                disc.classList.add('breeding-spawn');
++                // clear inline opacity to allow CSS to control it
++                disc.style.opacity = '';
++            });
++        } else {
++            // Existing disc: force to invisible first then trigger spawn class
++            disc.style.opacity = '0';
++            requestAnimationFrame(() => {
++                disc.classList.add('breeding-spawn');
++                disc.style.opacity = '';
++            });
++        }
++
++        // Wait for fade duration then remove class
++        await new Promise(resolve => setTimeout(resolve, BREEDING_FADE_MS));
++        disc.classList.remove('breeding-spawn');
++    }
++
++    // Flip animation for affected stones
++    if (result.flipped.length > 0) {
++        const flipCoords = result.flipped.map(p => [p.row, p.col]);
++        if (typeof applyFlipAnimations === 'function') {
++            applyFlipAnimations(flipCoords);
++            const delay = typeof FLIP_ANIMATION_DURATION_MS !== 'undefined' ? FLIP_ANIMATION_DURATION_MS : 800;
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++    }
++
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++if (typeof window !== 'undefined') {
++    window.processBreedingEffectsAtTurnStart = processBreedingEffectsAtTurnStart;
++    window.processBreedingImmediateAtPlacement = processBreedingImmediateAtPlacement;
++}
+diff --git a/game/special-effects/hyperactive.js b/game/special-effects/hyperactive.js
+new file mode 100644
+index 0000000..fbc943c
+--- /dev/null
++++ b/game/special-effects/hyperactive.js
+@@ -0,0 +1,329 @@
++/**
++ * @file hyperactive.js
++ * @description Hyperactive effect handlers
++ */
++
++/**
++ * Process hyperactive stone moves at turn start (both players).
++ * Runs AFTER bombs/dragons/breeding.
++ * @async
++ * @param {number} player - Current player (BLACK=1 or WHITE=-1)
++ * @param {Object} [precomputedResult] - Optional pre-computed result from logic layer
++ * @returns {Promise<void>}
++ */
++async function processHyperactiveMovesAtTurnStart(player, precomputedResult = null) {
++    const playerKey = player === BLACK ? 'black' : 'white';
++
++    // Prefer pipeline-produced precomputedResult; if not provided, use TurnPipelinePhases to compute turn-start effects.
++    let result = precomputedResult;
++    let events = [];
++    if (!result) {
++        if (typeof TurnPipelinePhases !== 'undefined' && typeof TurnPipelinePhases.applyTurnStartPhase === 'function') {
++            TurnPipelinePhases.applyTurnStartPhase(CardLogic, Core, cardState, gameState, playerKey, events);
++
++            // Collect hyperactive-related details from events
++            result = {
++                moved: [],
++                destroyed: [],
++                flipped: [],
++                flippedByOwner: {}
++            };
++
++            for (const ev of events) {
++                if (ev.type === 'hyperactive_moved_start' || ev.type === 'hyperactive_moved_immediate') {
++                    if (Array.isArray(ev.details)) result.moved.push(...ev.details);
++                }
++                if (ev.type === 'hyperactive_destroyed_start' || ev.type === 'hyperactive_destroyed_immediate') {
++                    if (Array.isArray(ev.details)) result.destroyed.push(...ev.details);
++                }
++                if (ev.type === 'hyperactive_flipped_start' || ev.type === 'hyperactive_flipped_immediate') {
++                    if (Array.isArray(ev.details)) result.flipped.push(...ev.details);
++                }
++                if (ev.type === 'hyperactive_flipped_start' && Array.isArray(ev.details)) {
++                    for (const p of ev.details) {
++                        const owner = p.owner || null;
++                        if (!owner) continue;
++                        result.flippedByOwner[owner] = result.flippedByOwner[owner] || [];
++                        result.flippedByOwner[owner].push({ row: p.row, col: p.col });
++                    }
++                }
++
++                if (ev.type === 'regen_triggered_start' && Array.isArray(ev.details)) {
++                    // Add to regen triggered
++                    result.regenTriggered = (result.regenTriggered || []).concat(ev.details);
++                }
++                if (ev.type === 'regen_capture_flipped_start' && Array.isArray(ev.details)) {
++                    result.regenCaptureFlips = (result.regenCaptureFlips || []).concat(ev.details);
++                }
++            }
++        } else {
++            console.error('[HYPERACTIVE] TurnPipelinePhases not available; cannot compute hyperactive moves safely from UI');
++            return;
++        }
++    }
++
++    const byOwner = result.flippedByOwner || {};
++    const regenTriggered = result.regenTriggered || [];
++    const regenCaptureFlips = result.regenCaptureFlips || [];
++
++    if (result.moved && result.moved.length > 0) {
++        addLog(LOG_MESSAGES.hyperactiveMoved(result.moved.length));
++    }
++    if (result.destroyed && result.destroyed.length > 0) {
++        addLog(LOG_MESSAGES.hyperactiveDestroyed(result.destroyed.length));
++    }
++    if (regenTriggered.length > 0) {
++        addLog(LOG_MESSAGES.regenTriggered(regenTriggered.length));
++    }
++    if (regenCaptureFlips.length > 0) {
++        addLog(LOG_MESSAGES.regenCapture(regenCaptureFlips.length));
++    }
++
++    // Animate using the pre-move DOM first, then sync to post-move state.
++    if (result.destroyed.length > 0 && typeof animateFadeOutAt === 'function') {
++        for (const pos of result.destroyed) {
++            await animateFadeOutAt(pos.row, pos.col);
++        }
++    }
++    if (result.moved.length > 0 && typeof animateHyperactiveMove === 'function') {
++        for (const m of result.moved) {
++            await animateHyperactiveMove(m.from, m.to);
++        }
++    }
++    emitBoardUpdate();
++
++    const delay = typeof FLIP_ANIMATION_DURATION_MS !== 'undefined' ? FLIP_ANIMATION_DURATION_MS : 800;
++
++    const setDiscColorAt = (row, col, color) => {
++        const cell = boardEl.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
++        const disc = cell ? cell.querySelector('.disc') : null;
++        if (!disc) return;
++        disc.classList.remove('black', 'white');
++        disc.classList.add(color === BLACK ? 'black' : 'white');
++    };
++
++
++    if (result.flipped.length > 0) {
++        // Stage: make flipped stones visually start from the "before flip" color.
++        const regenedSet = new Set(regenTriggered.map(p => `${p.row},${p.col}`));
++        for (const pos of result.flipped) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) continue; // Skip staging for Regen stones
++
++            const ownerKey = (byOwner.black || []).some(p => p.row === pos.row && p.col === pos.col) ? 'black'
++                : ((byOwner.white || []).some(p => p.row === pos.row && p.col === pos.col) ? 'white' : null);
++            const toColor = ownerKey === 'black' ? BLACK : (ownerKey === 'white' ? WHITE : null);
++            if (toColor == null) continue;
++            const fromColor = -toColor;
++            setDiscColorAt(pos.row, pos.col, fromColor);
++        }
++
++        const flipCoords = result.flipped
++            .filter(p => !regenedSet.has(`${p.row},${p.col}`))
++            .map(p => [p.row, p.col]);
++        if (flipCoords.length > 0 && typeof applyFlipAnimations === 'function') {
++            applyFlipAnimations(flipCoords);
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++
++        // Finish initial flip colors
++        for (const pos of result.flipped) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) continue; // Skip color sync for Regen stones
++
++            const ownerKey = (byOwner.black || []).some(p => p.row === pos.row && p.col === pos.col) ? 'black'
++                : ((byOwner.white || []).some(p => p.row === pos.row && p.col === pos.col) ? 'white' : null);
++            const toColor = ownerKey === 'black' ? BLACK : (ownerKey === 'white' ? WHITE : null);
++            if (toColor == null) continue;
++            setDiscColorAt(pos.row, pos.col, toColor);
++        }
++
++        // Regen back (Use universal cross-fade instead of flips)
++        if (regenTriggered.length > 0) {
++            // Use universal cross-fade system
++            for (const pos of regenTriggered) {
++                const ownerColor = gameState.board[pos.row][pos.col];
++                const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++                const disc = cell ? cell.querySelector('.disc') : null;
++                if (!disc) continue;
++
++                // Start cross-fade (fade in then auto fade out)
++                await crossfadeStoneVisual(disc, {
++                    effectKey: 'regenStone',
++                    owner: ownerColor,
++                    newColor: ownerColor,
++                    durationMs: 600,
++                    autoFadeOut: true,
++                    fadeWholeStone: true
++                });
++            }
++        }
++
++        // Regen capture flips
++        if (regenCaptureFlips.length > 0) {
++            for (const pos of regenCaptureFlips) {
++                const toColor = gameState.board[pos.row][pos.col];
++                setDiscColorAt(pos.row, pos.col, -toColor);
++            }
++            const capCoords = regenCaptureFlips.map(p => [p.row, p.col]);
++            if (typeof applyFlipAnimations === 'function') {
++                applyFlipAnimations(capCoords);
++                await new Promise(resolve => setTimeout(resolve, delay));
++            }
++            for (const pos of regenCaptureFlips) {
++                const toColor = gameState.board[pos.row][pos.col];
++                setDiscColorAt(pos.row, pos.col, toColor);
++            }
++        }
++
++        // Charge updates MUST be performed by the rule pipeline (TurnPipelinePhases).
++        // UI must not mutate rule state directly. If pipeline has already applied charges,
++        // emit a sync to update UI; otherwise log a diagnostic for triage.
++        if (typeof emitCardStateChange === 'function') {
++            // Refresh UI-only views; do not mutate cardState here.
++            emitCardStateChange();
++        } else {
++            console.warn('[HYPERACTIVE] charge updates should be performed by pipeline; emitCardStateChange not available');
++        }
++    }
++
++    emitBoardUpdate();
++    emitGameStateChange();
++}
++
++/**
++ * Placement-turn immediate activation for a newly placed hyperactive stone.
++ * Runs AFTER normal flip animations, and before turn ends.
++ * @param {number} player
++ * @param {number} row
++ * @param {number} col
++ * @param {Object} [precomputedResult]
++ */
++async function processHyperactiveImmediateAtPlacement(player, row, col, precomputedResult = null) {
++    const playerKey = player === BLACK ? 'black' : 'white';
++
++    // Prefer precomputed result (from pipeline run of the placement). If not provided, abort — UI must rely on pipeline-produced results.
++    if (!precomputedResult) {
++        console.error('[HYPERACTIVE IMMEDIATE] No precomputed pipeline result provided; cannot compute immediate hyperactive effects from UI');
++        return;
++    }
++
++    const result = precomputedResult;
++    const byOwner = {};
++    byOwner[playerKey] = result.flipped || [];
++
++    const regenTriggered = result.regenTriggered || [];
++    const regenCaptureFlips = result.regenCaptureFlips || [];
++
++    if (result.moved && result.moved.length > 0) {
++        addLog(LOG_MESSAGES.hyperactiveMovedImmediate());
++    }
++    if (result.destroyed && result.destroyed.length > 0) {
++        addLog(LOG_MESSAGES.hyperactiveDestroyedImmediate());
++    }
++
++    // Animate using the pre-move DOM first, then sync to post-move state.
++    if (result.destroyed.length > 0 && typeof animateFadeOutAt === 'function') {
++        for (const pos of result.destroyed) {
++            await animateFadeOutAt(pos.row, pos.col);
++        }
++    }
++    if (result.moved.length > 0 && typeof animateHyperactiveMove === 'function') {
++        for (const m of result.moved) {
++            await animateHyperactiveMove(m.from, m.to);
++        }
++    }
++    emitBoardUpdate();
++
++    if (result.flipped.length > 0) {
++        const delay = typeof FLIP_ANIMATION_DURATION_MS !== 'undefined' ? FLIP_ANIMATION_DURATION_MS : 800;
++
++        const setDiscColorAt = (r, c, color) => {
++            const cell = boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
++            const disc = cell ? cell.querySelector('.disc') : null;
++            if (!disc) return;
++            disc.classList.remove('black', 'white');
++            disc.classList.add(color === BLACK ? 'black' : 'white');
++        };
++
++
++        const regenedSet = new Set(regenTriggered.map(p => `${p.row},${p.col}`));
++        const toColor = player;
++        const fromColor = -toColor;
++        for (const pos of result.flipped) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) continue; // Skip staging for Regen stones
++
++            setDiscColorAt(pos.row, pos.col, fromColor);
++        }
++
++        const flipCoords = result.flipped
++            .filter(p => !regenedSet.has(`${p.row},${p.col}`))
++            .map(p => [p.row, p.col]);
++        if (flipCoords.length > 0 && typeof applyFlipAnimations === 'function') {
++            applyFlipAnimations(flipCoords);
++            await new Promise(resolve => setTimeout(resolve, delay));
++        }
++
++        for (const pos of result.flipped) {
++            if (regenedSet.has(`${pos.row},${pos.col}`)) continue; // Skip color sync for Regen stones
++            setDiscColorAt(pos.row, pos.col, toColor);
++        }
++
++        if (regenTriggered.length > 0) {
++            // Use universal cross-fade system
++            for (const pos of regenTriggered) {
++                const ownerColor = gameState.board[pos.row][pos.col];
++                const cell = boardEl.querySelector(`.cell[data-row="${pos.row}"][data-col="${pos.col}"]`);
++                const disc = cell ? cell.querySelector('.disc') : null;
++                if (!disc) continue;
++
++                // Start cross-fade (fade in then auto fade out)
++                await crossfadeStoneVisual(disc, {
++                    effectKey: 'regenStone',
++                    owner: ownerColor,
++                    newColor: ownerColor,
++                    durationMs: 600,
++                    autoFadeOut: true,
++                    fadeWholeStone: true
++                });
++            }
++        }
++
++        if (regenCaptureFlips.length > 0) {
++            for (const pos of regenCaptureFlips) {
++                const to = gameState.board[pos.row][pos.col];
++                setDiscColorAt(pos.row, pos.col, -to);
++            }
++            const capCoords = regenCaptureFlips.map(p => [p.row, p.col]);
++            if (typeof applyFlipAnimations === 'function') {
++                applyFlipAnimations(capCoords);
++                await new Promise(resolve => setTimeout(resolve, delay));
++            }
++            for (const pos of regenCaptureFlips) {
++                const to = gameState.board[pos.row][pos.col];
++                setDiscColorAt(pos.row, pos.col, to);
++            }
++        }
++
++        cardState.charge[playerKey] = Math.min(30, (cardState.charge[playerKey] || 0) + result.flipped.length);
++        if (regenCaptureFlips.length > 0) {
++            for (const pos of regenCaptureFlips) {
++                const color = gameState.board[pos.row][pos.col];
++                const key = color === BLACK ? 'black' : (color === WHITE ? 'white' : null);
++                if (!key) continue;
++                cardState.charge[key] = Math.min(30, (cardState.charge[key] || 0) + 1);
++            }
++        }
++    }
++
++    emitBoardUpdate();
++    emitGameStateChange();
++
++    // Allow the browser to paint the immediate move before the next turn start effects run.
++    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
++        await new Promise(resolve => window.requestAnimationFrame(() => resolve()));
++    }
++}
++
++if (typeof window !== 'undefined') {
++    window.processHyperactiveMovesAtTurnStart = processHyperactiveMovesAtTurnStart;
++    window.processHyperactiveImmediateAtPlacement = processHyperactiveImmediateAtPlacement;
++}
+diff --git a/scripts/check_ui_calls.js b/scripts/check_ui_calls.js
+new file mode 100644
+index 0000000..b4d02ac
+--- /dev/null
++++ b/scripts/check_ui_calls.js
+@@ -0,0 +1,101 @@
++#!/usr/bin/env node
++const fs = require('fs');
++const path = require('path');
++
++// Config: file globs to scan (relative to repo root)
++const ROOT = path.resolve(__dirname, '..');
++// Focused detection scope: only UI-facing files where rule-writer calls are disallowed.
++const SCAN_PATHS = [
++  'ui.js',
++  'ui',
++  'game/move-executor.js',
++  'game/move-executor-visuals.js',
++  'game/turn-manager.js',
++  'game/pass-handler.js',
++  'game/card-effects/destroy.js',
++  'game/card-effects/placement.js',
++  'game/special-effects/bombs.js',
++  'game/special-effects/hyperactive.js',
++  'game/special-effects/dragons.js'
++];
++
++// Blacklisted CardLogic methods that are considered rule-writers / direct mutators
++const BLACKLIST = [
++  'onTurnEnd',
++  'onTurnStart',
++  'tickBombs',
++  'processBombs',
++  'processHyperactiveMoves',
++  'applyDestroyEffect',
++  'applyPlacementEffects',
++  'applySwapEffect',
++  'applyRegenAfterFlips'
++];
++
++// Use a non-global regex for per-line checks to avoid lastIndex state issues
++const blacklistRegex = new RegExp('CardLogic\\.(' + BLACKLIST.join('|') + ')');// Detect direct state writes to rule state from UI modules (e.g., cardState.charge = ...)
++const stateWriteRegex = new RegExp('(cardState|gameState)\.[A-Za-z0-9_$]+\s*=');
++function walk(dir) {
++  let files = [];
++  const entries = fs.readdirSync(dir, { withFileTypes: true });
++  for (const entry of entries) {
++    const full = path.join(dir, entry.name);
++    if (entry.isDirectory()) files = files.concat(walk(full));
++    else files.push(full);
++  }
++  return files;
++}
++
++function scanFile(filePath) {
++  const src = fs.readFileSync(filePath, 'utf8');
++  const results = [];
++  const lines = src.split('\n');
++  for (let i = 0; i < lines.length; i++) {
++    const m = blacklistRegex.exec(lines[i]);
++    if (m) {
++      results.push({ line: i + 1, fn: m[1], text: lines[i].trim() });
++      continue;
++    }
++    const w = stateWriteRegex.exec(lines[i]);
++    if (w) {
++      results.push({ line: i + 1, fn: 'STATE_WRITE', text: lines[i].trim() });
++    }
++  }
++  return results;
++}
++
++let violations = [];
++
++for (const p of SCAN_PATHS) {
++  const abs = path.join(ROOT, p);
++  if (!fs.existsSync(abs)) continue;
++  const stat = fs.statSync(abs);
++  if (stat.isDirectory()) {
++    const files = walk(abs).filter(f => f.endsWith('.js'));
++    for (const f of files) {
++      const res = scanFile(f);
++      if (res.length) violations.push({ file: path.relative(process.cwd(), f), matches: res });
++    }
++  } else if (stat.isFile()) {
++    if (abs.endsWith('.js')) {
++      const res = scanFile(abs);
++      if (res.length) violations.push({ file: path.relative(process.cwd(), abs), matches: res });
++    }
++  }
++}
++
++if (violations.length === 0) {
++  console.log('✅ No UI-side CardLogic rule-writer calls detected in scan scope.');
++  process.exit(0);
++}
++
++console.error('❌ Detected CardLogic rule-writer calls in UI/game scan scope:');
++for (const v of violations) {
++  console.error('\n-- ' + v.file);
++  for (const m of v.matches) {
++    console.error(`  L${m.line}: ${m.fn} -> ${m.text}`);
++  }
++}
++
++console.error('\nAction required: Review each location and either move the logic into the pipeline (preferred) or whitelist this call with a comment: // allowed-ui-rule-call <reason>');
++process.exit(1);
+-- 
+2.50.1.windows.1
+

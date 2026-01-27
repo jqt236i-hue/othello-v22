@@ -1,0 +1,23 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      if (!move) {
+-        console.warn('No legal move found for iteration', i);
+-        continue;
+-      }
++      if (!move) {
++        console.warn('No legal move found for iteration', i);
++        // Save a sample snapshot for triage
++        try {
++          const iterDir = path.join(runDir, `no-legal-move-${String(i).padStart(4,'0')}`);
++          mkdirp(iterDir);
++          const snap = await page.evaluate(() => {
++            try { return { gameState: window.gameState, cardState: window.cardState, globals: { hasGetLegalMoves: !!window.getLegalMoves, BLACK: typeof window.BLACK !== 'undefined' ? window.BLACK : null } }; } catch (e) { return { error: String(e) }; }
++          });
++          fs.writeFileSync(path.join(iterDir, 'snapshot.json'), JSON.stringify({ snap, logs }, null, 2), 'utf8');
++          await page.screenshot({ path: path.join(iterDir, 'page.png'), fullPage: true });
++          fs.writeFileSync(path.join(iterDir, 'logs.txt'), logs.map(l => `[${l.type}] ${l.text}`).join('\n'), 'utf8');
++        } catch (e) { console.error('Error saving no-legal-move sample', e && e.message); }
++        continue;
++      }
+*** End Patch

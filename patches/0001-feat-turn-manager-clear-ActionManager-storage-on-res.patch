@@ -1,0 +1,27 @@
+From 0aafd14110b252f68acdde0632903ac50b055faf Mon Sep 17 00:00:00 2001
+From: CI Bot <ci-bot@example.com>
+Date: Sat, 24 Jan 2026 13:27:41 +0900
+Subject: [PATCH] feat(turn-manager): clear ActionManager storage on resetGame
+ to avoid cross-game leakage
+
+---
+ game/turn-manager.js | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/game/turn-manager.js b/game/turn-manager.js
+index cb33335..66f4fc1 100644
+--- a/game/turn-manager.js
++++ b/game/turn-manager.js
+@@ -154,7 +154,8 @@ function resetGame() {
+     // Reset ActionManager for new game
+     if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager) {
+         ActionManager.ActionManager.reset();
+-        console.log('[resetGame] ActionManager reset');
++        try { ActionManager.ActionManager.clearStorage(); } catch (e) { /* ignore */ }
++        console.log('[resetGame] ActionManager reset and cleared storage');
+     }
+ 
+     if (typeof document !== 'undefined') {
+-- 
+2.50.1.windows.1
+

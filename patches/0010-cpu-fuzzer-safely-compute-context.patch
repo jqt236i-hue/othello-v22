@@ -1,0 +1,14 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-        try {
+-          const legal = window.getLegalMoves ? window.getLegalMoves(gs, window.BLACK, window.CardLogic.getCardContext(cs)) : [];
+-          return legal && legal.length ? legal[0] : null;
+-        } catch (e) { return null; }
++        try {
++          let ctx = {};
++          try { ctx = (window.CardLogic && typeof window.CardLogic.getCardContext === 'function') ? window.CardLogic.getCardContext(cs) : {}; } catch (e) { ctx = {}; }
++          const legal = window.getLegalMoves ? window.getLegalMoves(gs, window.BLACK, ctx) : [];
++          return legal && legal.length ? legal[0] : null;
++        } catch (e) { return null; }
+*** End Patch

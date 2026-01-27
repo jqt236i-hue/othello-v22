@@ -1,0 +1,54 @@
+*** Begin Patch
+*** Update File: scripts/playwright_cpu_fuzzer.js
+@@
+-      await page.goto(indexPath, { waitUntil: 'load' });
+-      // Use the user-specified timeoutMs so the fuzzer respects the CLI flag
+-      console.log(`[FUZZ_DEBUG] waitForFunction timeoutMs=${timeoutMs} (type=${typeof timeoutMs})`);
+-      await page.waitForFunction(() => !!(window.addLog && window.getLegalMoves && window.handleCellClick), { timeout: timeoutMs });
++      await page.goto(indexPath, { waitUntil: 'load' });
++      // Staged readiness checks to avoid brittle single-wait timeouts
++      console.log(`[FUZZ_DEBUG] stage1: wait DOM ready (timeout=${Math.min(timeoutMs,5000)})`);
++      await page.waitForFunction(() => document.readyState === 'complete', { timeout: Math.min(timeoutMs, 5000) });
++
++      console.log('[FUZZ_DEBUG] stage2: wait minimal globals (addLog)');
++      await page.waitForFunction(() => !!window.addLog, { timeout: Math.min(timeoutMs, 5000) });
++
++      console.log(`[FUZZ_DEBUG] stage3: wait full UI APIs & board render (timeout=${timeoutMs})`);
++      await page.waitForFunction(() => !!(window.getLegalMoves && window.handleCellClick && (document.querySelector('.board') || (window.gameState && typeof window.gameState.turnNumber === 'number'))), { timeout: timeoutMs });
+@@
+-    } catch (e) {
+-      console.error('Error during iteration', i, e && e.message);
+-      fs.writeFileSync(path.join(runDir, `error-iter-${iterId}.txt`), String(e && e.stack || e), 'utf8');
+-    }
++    } catch (e) {
++      console.error('Error during iteration', i, e && e.message);
++      // Save rich diagnostics for triage (snapshot, screenshot, logs)
++      try {
++        const iterDir = path.join(runDir, `iteration-${iterId}`);
++        mkdirp(iterDir);
++        const snap = await page.evaluate(() => {
++          try {
++            return {
++              gameState: window.gameState,
++              cardState: window.cardState,
++              isProcessing: typeof window.isProcessing !== 'undefined' ? window.isProcessing : (window.isProcessingGlobal || null),
++              isCardAnimating: typeof window.isCardAnimating !== 'undefined' ? window.isCardAnimating : (window.isCardAnimatingGlobal || null),
++              pendingEffectByPlayer: window.cardState ? window.cardState.pendingEffectByPlayer : null,
++              currentPlayer: window.gameState ? window.gameState.currentPlayer : null,
++              globals: {
++                hasCardLogic: !!window.CardLogic,
++                hasAddLog: !!window.addLog,
++                hasGetLegalMoves: !!window.getLegalMoves,
++                hasHandleCellClick: !!window.handleCellClick
++              }
++            };
++          } catch (e2) { return { error: String(e2) }; }
++        });
++        fs.writeFileSync(path.join(iterDir, 'snapshot.json'), JSON.stringify({ snap, logs }, null, 2), 'utf8');
++        await page.screenshot({ path: path.join(iterDir, 'page.png'), fullPage: true });
++        fs.writeFileSync(path.join(iterDir, 'logs.txt'), logs.map(l => `[${l.type}] ${l.text}`).join('\n'), 'utf8');
++      } catch (captureErr) {
++        fs.writeFileSync(path.join(runDir, `error-iter-${iterId}.txt`), String(e && e.stack || e) + '\n--- captureErr ---\n' + String(captureErr && captureErr.stack || captureErr), 'utf8');
++      }
++    }
+*** End Patch
