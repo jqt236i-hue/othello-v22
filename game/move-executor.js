@@ -100,21 +100,14 @@ async function executeMoveViaPipeline(move, hadSelection, playerKey) {
                 try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
             });
         } else {
-            // Fallback: schedule via setTimeout to avoid immediate CPU start (prevents visual race)
+            // Fallback: do not call time APIs in game layer. Emit a presentation event so UI can schedule the CPU turn.
+            console.log('[DEBUG][executeMoveViaPipeline] scheduleCpuTurn not available; emitting SCHEDULE_CPU_TURN presentation event');
             try {
-                console.log('[DEBUG][executeMoveViaPipeline] scheduleCpuTurn not available; using fallback delay');
-                if (typeof setTimeout === 'function') {
-                    setTimeout(() => {
-                        try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
-                    }, CPU_TURN_DELAY_MS);
-                } else if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
-                    window.setTimeout(() => { try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); } }, CPU_TURN_DELAY_MS);
-                } else {
-                    // Last resort: immediate but logged
-                    console.warn('[DEBUG][executeMoveViaPipeline] setTimeout not available; invoking processCpuTurn immediately');
-                    processCpuTurn();
-                }
-            } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
+                cardState.presentationEvents = cardState.presentationEvents || [];
+                cardState.presentationEvents.push({ type: 'SCHEDULE_CPU_TURN', delayMs: CPU_TURN_DELAY_MS, reason: 'CPU_TURN' });
+            } catch (e) {
+                console.error('[DEBUG][executeMoveViaPipeline] failed to emit SCHEDULE_CPU_TURN event', e);
+            }
         }
     } else {
         isProcessing = false;
@@ -148,10 +141,8 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 }
 
-// Expose for browser/global usage (legacy callers call executeMove directly)
-if (typeof window !== 'undefined') {
-    try { window.executeMove = executeMove; } catch (e) { /* ignore */ }
-}
+// Exposing `executeMove` to browser globals is a UI responsibility to avoid direct browser-global references in `game/**`.
+// UI code can import this module and attach `executeMove` to the browser global if necessary.
 if (typeof globalThis !== 'undefined') {
     try { globalThis.executeMove = executeMove; } catch (e) { /* ignore */ }
 }

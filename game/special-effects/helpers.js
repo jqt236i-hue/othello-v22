@@ -44,9 +44,9 @@ if (typeof module !== 'undefined' && module.exports) {
     };
 }
 
-if (typeof window !== 'undefined') {
-    try { window.getFlipBlockers = getFlipBlockers; } catch (e) { /* ignore */ }
-}
+// Exposing helpers to the browser global object is a UI responsibility. If a consumer needs
+// a global helper for debug/visualization, the UI layer should import this module and attach
+// functions to the browser global explicitly. This keeps `game/**` free of direct references to browser globals.
 if (typeof globalThis !== 'undefined') {
     try { globalThis.getFlipBlockers = getFlipBlockers; } catch (e) { /* ignore */ }
 }

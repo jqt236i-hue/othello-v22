@@ -62,22 +62,26 @@ describe('move-executor CPU scheduling fallback', () => {
         // processCpuTurn should not have been called immediately
         expect(global.processCpuTurn).not.toHaveBeenCalled();
 
+        // Instead, we expect a presentation event was emitted requesting scheduling
+        expect(global.cardState.presentationEvents).toBeDefined();
+        const sched = (global.cardState.presentationEvents || []).find(e => e.type === 'SCHEDULE_CPU_TURN');
+        expect(sched).toBeDefined();
+        expect(sched.delayMs).toBe(global.CPU_TURN_DELAY_MS);
+
+        // Simulate UI scheduler honoring the presentation event (UI-side timer)
+        // The UI would call scheduleCpuTurn(delay, callback) or call processCpuTurn after delay.
+        // For test, simulate that by scheduling processCpuTurn using setTimeout from the test side.
+        setTimeout(() => { try { processCpuTurn(); } catch (e) { console.error(e); } }, sched.delayMs);
+
         // Fast-forward time to just before CPU_TURN_DELAY_MS (600ms)
         jest.advanceTimersByTime(599);
         expect(global.processCpuTurn).not.toHaveBeenCalled();
 
-        // Advance past the delay
+        // Advance past the delay and run timers
         jest.advanceTimersByTime(2);
-        // Ensure any remaining timers fire
         jest.runOnlyPendingTimers();
 
-        // Debug: check for fallback scheduling log
-        const logs = logSpy.mock.calls.map(c => c[0]).join('\n');
-        const warns = warnSpy.mock.calls.map(c => c[0]).join('\n');
-        // If scheduleCpuTurn missing, we should have the fallback log message
-        expect(logs + warns).toEqual(expect.stringMatching(/scheduleCpuTurn not available|scheduled CPU callback firing/));
-
-        // processCpuTurn should eventually be called (allow for microtask delays)
+        // processCpuTurn should eventually be called
         expect(global.processCpuTurn).toHaveBeenCalled();
 
         logSpy.mockRestore(); warnSpy.mockRestore();

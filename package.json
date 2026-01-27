@@ -25,6 +25,7 @@
     "check:rule-purity": "node scripts/check_rule_no_time_random.js",
     "check:no-json-clone": "node scripts/check_no_json_clone.js",
     "check:game-purity": "npm run check:game-dom && npm run check:game-window && npm run check:game-time && npm run check:game-ui-import && npm run check:rule-purity && npm run check:no-json-clone",
+    "check:game-no-ui-calls": "npm run check:game-ui-import",
     "test:cpu-fuzz": "node scripts/playwright_cpu_fuzzer.js --iterations=200 --timeoutMs=3000 --injectMock --failOnFailure",
     "test:jest:changed": "jest --onlyChanged",
     "test:jest": "jest --runInBand",
