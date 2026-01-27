@@ -28,7 +28,7 @@
         // Build protection sets for quick lookup
         const protectedSet = new Set(
             (cardState.specialStones || [])
-                .filter(s => s.type === 'PROTECTED' || s.type === 'PERMA_PROTECTED' || s.type === 'ULTIMATE_DESTROY_GOD')
+                .filter(s => s.type === 'PROTECTED' || s.type === 'PERMA_PROTECTED' || s.type === 'ULTIMATE_DESTROY_GOD' || s.type === 'BREEDING' || s.type === 'DRAGON')
                 .map(s => `${s.row},${s.col}`)
         );
         const dragons = (cardState.specialStones || []).filter(s => s.type === 'DRAGON');
@@ -122,7 +122,7 @@
 
         const protectedSet = new Set(
             (cardState.specialStones || [])
-                .filter(s => s.type === 'PROTECTED' || s.type === 'PERMA_PROTECTED' || s.type === 'ULTIMATE_DESTROY_GOD')
+                .filter(s => s.type === 'PROTECTED' || s.type === 'PERMA_PROTECTED' || s.type === 'ULTIMATE_DESTROY_GOD' || s.type === 'BREEDING' || s.type === 'DRAGON')
                 .map(s => `${s.row},${s.col}`)
         );
         const clearBombAt = (r, c) => {
@@ -192,7 +192,7 @@
 
         const protectedSet = new Set(
             (cardState.specialStones || [])
-                .filter(s => s.type === 'PROTECTED' || s.type === 'PERMA_PROTECTED' || s.type === 'ULTIMATE_DESTROY_GOD')
+                .filter(s => s.type === 'PROTECTED' || s.type === 'PERMA_PROTECTED' || s.type === 'ULTIMATE_DESTROY_GOD' || s.type === 'BREEDING' || s.type === 'DRAGON')
                 .map(s => `${s.row},${s.col}`)
         );
         const clearBombAt = (r, c) => {

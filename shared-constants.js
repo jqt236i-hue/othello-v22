@@ -168,6 +168,9 @@
         SKIP_ANIMATIONS: false      // アニメーションをスキップ
     };
 
+    // TIME BOMB default turns
+    const TIME_BOMB_TURNS = 3;
+
     // ===== EXPORT =====
     const exports = {
         // Board constants
@@ -184,9 +187,7 @@
         // Card info
         MAX_SWAP_TARGETS: 6,
         MAX_DESTROY_TARGETS: 8,
-
-        // Debug mode
-        DEBUG_MODE
+        TIME_BOMB_TURNS: TIME_BOMB_TURNS,
     };
 
     // Also expose key constants directly on global scope for legacy compatibility
@@ -199,6 +200,7 @@
         window.CARD_TYPE_BY_ID = CARD_TYPE_BY_ID;
         window.CARD_TYPES = CARD_TYPES;
         window.DEBUG_MODE = DEBUG_MODE;
+        window.TIME_BOMB_TURNS = TIME_BOMB_TURNS;
     }
 
     return exports;
