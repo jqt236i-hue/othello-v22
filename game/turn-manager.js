@@ -107,6 +107,17 @@ function handleCellClick(row, col) {
         });
     }
 
+    // Notify UI that a hand animation will be played (UI should play animation based on this event)
+    try {
+        if (typeof emitPresentationEvent === 'function') {
+            emitPresentationEvent(cardState, { type: 'PLAY_HAND_ANIMATION', player: playerKey, row, col });
+        } else {
+            // fallback: push to presentationEvents
+            cardState.presentationEvents = cardState.presentationEvents || [];
+            cardState.presentationEvents.push({ type: 'PLAY_HAND_ANIMATION', player: playerKey, row, col });
+        }
+    } catch (e) { /* do not block move on presentation failures */ }
+
     playHandAnimation(gameState.currentPlayer, row, col, () => {
         if (isCardAnimating) {
             if (timers && typeof timers.waitMs === 'function') {
