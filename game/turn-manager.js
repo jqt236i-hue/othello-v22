@@ -299,6 +299,16 @@ async function onTurnStart(player) {
             const drawnCardId = cardState.hands[playerKey][cardState.hands[playerKey].length - 1];
             if (drawnCardId !== null && drawnCardId !== undefined) {
                 addLog(`${getPlayerName(player)}がドローしました`);
+                // Emit DRAW_CARD presentation event via helper if available (type, player, cardId)
+                try {
+                    if (typeof emitPresentationEvent === 'function') {
+                        emitPresentationEvent(cardState, { type: 'DRAW_CARD', player: playerKey, cardId: drawnCardId });
+                    } else {
+                        // Fallback minimal push (should be rare—helper expected in most builds)
+                        cardState.presentationEvents = cardState.presentationEvents || [];
+                        cardState.presentationEvents.push({ type: 'DRAW_CARD', player: playerKey, cardId: drawnCardId });
+                    }
+                } catch (e) { /* do not break turn if presentation hook fails */ }
                 if (typeof updateDeckVisual === 'function') updateDeckVisual();
                 const isHidden = (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.isDocumentHidden === 'function') ?
                     __uiImpl.isDocumentHidden() : (typeof __uiImpl !== 'undefined' && __uiImpl && __uiImpl.__BACKGROUND_MODE__ === true);
