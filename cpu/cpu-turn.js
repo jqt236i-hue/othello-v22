@@ -6,6 +6,22 @@
  */
 function processCpuTurn() {
     const playerKey = 'white';
+
+    // Defensive scheduling: if CPU was triggered before visuals had time to present the last move,
+    // defer execution until a minimum delay has elapsed since last move completion.
+    try {
+        const last = (typeof global !== 'undefined' && typeof global.__lastMoveCompletedAt === 'number') ? global.__lastMoveCompletedAt : (typeof window !== 'undefined' ? window.__lastMoveCompletedAt : undefined);
+        const minDelay = (typeof global !== 'undefined' && typeof global.CPU_TURN_DELAY_MS === 'number') ? global.CPU_TURN_DELAY_MS : (typeof CPU_TURN_DELAY_MS === 'number' ? CPU_TURN_DELAY_MS : 600);
+        if (typeof last === 'number') {
+            const elapsed = Date.now() - last;
+            if (elapsed < minDelay) {
+                const wait = minDelay - elapsed;
+                if (typeof setTimeout === 'function') { setTimeout(processCpuTurn, wait); return; }
+                if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') { window.setTimeout(processCpuTurn, wait); return; }
+            }
+        }
+    } catch (e) { /* defensive */ }
+
     isProcessing = true;
     
     // アニメーション中は待機

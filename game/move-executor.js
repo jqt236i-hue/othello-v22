@@ -88,6 +88,8 @@ async function executeMoveViaPipeline(move, hadSelection, playerKey) {
     if (isGameOver(gameState)) { showResult(); isProcessing = false; return; }
 
     await onTurnStartLogic(gameState.currentPlayer);
+    // Record completion timestamp so CPU turns invoked immediately after can be deferred by CPU handler if necessary
+    try { global.__lastMoveCompletedAt = Date.now(); } catch (e) { /* ignore environments without global */ }
     console.log('[DEBUG][executeMoveViaPipeline] after onTurnStart', { gameStateCurrentPlayer: gameState.currentPlayer, isProcessing, isCardAnimating, pendingEffect: cardState.pendingEffectByPlayer });
     if (gameState.currentPlayer === WHITE && !(__uiImpl_move_executor && __uiImpl_move_executor.DEBUG_HUMAN_VS_HUMAN)) {
         isProcessing = true;
@@ -98,8 +100,21 @@ async function executeMoveViaPipeline(move, hadSelection, playerKey) {
                 try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
             });
         } else {
-            // Fallback: call immediately in non-UI environments
-            try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
+            // Fallback: schedule via setTimeout to avoid immediate CPU start (prevents visual race)
+            try {
+                console.log('[DEBUG][executeMoveViaPipeline] scheduleCpuTurn not available; using fallback delay');
+                if (typeof setTimeout === 'function') {
+                    setTimeout(() => {
+                        try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
+                    }, CPU_TURN_DELAY_MS);
+                } else if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+                    window.setTimeout(() => { try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); } }, CPU_TURN_DELAY_MS);
+                } else {
+                    // Last resort: immediate but logged
+                    console.warn('[DEBUG][executeMoveViaPipeline] setTimeout not available; invoking processCpuTurn immediately');
+                    processCpuTurn();
+                }
+            } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
         }
     } else {
         isProcessing = false;
