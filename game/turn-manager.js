@@ -363,8 +363,8 @@ async function onTurnStart(player) {
 
     // 5. Update UI — queue a STATE_UPDATED presentation event; UI should consume and perform actual emits/renders
     try {
-        const UiNotifier = require('./turn/ui-notifier');
-        UiNotifier.notifyUI(cardState, gameState, { stateChanged: true, cardStateChanged: true, render: true });
+        const Notifier = require('./turn/notifier');
+        Notifier.notifyUI(cardState, gameState, { stateChanged: true, cardStateChanged: true, render: true });
     } catch (e) {
         // As a safe fallback in unusual environments, keep the old behavior
         try { if (typeof emitGameStateChange === 'function') emitGameStateChange(); } catch (e2) {}

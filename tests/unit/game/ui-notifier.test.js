@@ -1,4 +1,4 @@
-const { notifyUI, _pushEvent } = require('../../../game/turn/ui-notifier');
+const { notifyUI, _pushEvent } = require('../../../game/turn/notifier');
 
 describe('UI Notifier', () => {
     let cs;
