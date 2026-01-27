@@ -1,0 +1,143 @@
+(function () {
+// Move execution and flip animations extracted from turn-manager
+// Refactored to use Shared Logic via wrappers
+
+let __uiImpl_move_executor = {};
+function setUIImpl(obj) { __uiImpl_move_executor = obj || {}; }
+
+if (typeof CardLogic === 'undefined') {
+    console.error('CardLogic/CoreLogic is not loaded.');
+}
+
+async function executeMove(move) {
+    try {
+        const hadSelection = cardState.selectedCardId !== null;
+        cardState.selectedCardId = null;
+        const playerKey = getPlayerKey(move.player);
+        const debugUsePipeline = !!(__uiImpl_move_executor && __uiImpl_move_executor.DEBUG_USE_TURN_PIPELINE) && typeof TurnPipeline !== 'undefined' && typeof TurnPipeline.applyTurn === 'function';
+        const pipelineSnapshot = debugUsePipeline ? runPipelineDebugSnapshot(move, playerKey) : null;
+        const pipelineAvailable = (typeof TurnPipelineUIAdapter !== 'undefined' && typeof TurnPipeline !== 'undefined');
+
+        console.log('[DEBUG][executeMove] enter', { playerKey, isProcessing, isCardAnimating, USE_TURN_PIPELINE: !!(__uiImpl_move_executor && __uiImpl_move_executor.USE_TURN_PIPELINE), DEBUG_HUMAN_VS_HUMAN: !!(__uiImpl_move_executor && __uiImpl_move_executor.DEBUG_HUMAN_VS_HUMAN), pendingEffectByPlayer: cardState.pendingEffectByPlayer });
+
+        if (!pipelineAvailable) {
+            throw new Error('TurnPipeline/TurnPipelineUIAdapter is not available. Legacy path has been removed.');
+        }
+
+        await executeMoveViaPipeline(move, hadSelection, playerKey);
+        if (pipelineSnapshot) {
+            comparePipelineSnapshot(pipelineSnapshot, cardState, gameState);
+        }
+
+    } catch (error) {
+        console.error('[CRITICAL] Error in executeMove:', error);
+        isProcessing = false;
+    } finally {
+        console.log('[DEBUG][executeMove] exit', { isProcessing, isCardAnimating, uiIsProcessing: (__uiImpl_move_executor && typeof __uiImpl_move_executor.isProcessing !== 'undefined' ? __uiImpl_move_executor.isProcessing : undefined), uiIsCardAnimating: (__uiImpl_move_executor && typeof __uiImpl_move_executor.isCardAnimating !== 'undefined' ? __uiImpl_move_executor.isCardAnimating : undefined), gameStateCurrentPlayer: gameState && gameState.currentPlayer });
+    }
+}
+
+async function executeMoveViaPipeline(move, hadSelection, playerKey) {
+    const action = (typeof ActionManager !== 'undefined' && ActionManager.ActionManager && typeof ActionManager.ActionManager.createAction === 'function')
+        ? ActionManager.ActionManager.createAction('place', playerKey, { row: move.row, col: move.col })
+        : { type: 'place', row: move.row, col: move.col };
+
+    if (action && cardState && typeof cardState.turnIndex === 'number') {
+        action.turnIndex = cardState.turnIndex;
+    }
+
+    const res = TurnPipelineUIAdapter.runTurnWithAdapter(cardState, gameState, playerKey, action, TurnPipeline);
+
+    // Check if action was rejected (explicit false check, not truthy check)
+    if (res.ok === false) {
+        console.warn('[MoveExecutor] Action rejected:', res.rejectedReason, 'events:', JSON.stringify(res.events || res, null, 2));
+        // Do not record, do not increment turnIndex
+        // Important: reset isProcessing to allow auto-loop to continue
+        isProcessing = false;
+        emitBoardUpdate();
+        return;
+    }
+
+    if (typeof ActionManager !== 'undefined' && ActionManager.ActionManager) {
+        try {
+            ActionManager.ActionManager.recordAction(action);
+            ActionManager.ActionManager.incrementTurnIndex();
+        } catch (e) {
+            console.warn('[MoveExecutor] Failed to record action:', e);
+        }
+    }
+
+    gameState = res.nextGameState;
+    cardState = res.nextCardState;
+    console.log('[DEBUG][executeMoveViaPipeline] after apply', { gameStateCurrentPlayer: gameState.currentPlayer, playerKey, isProcessing, isCardAnimating, pendingEffect: cardState.pendingEffectByPlayer });
+
+    const phases = res.phases || {};
+    const effects = res.placementEffects || {};
+    const immediate = res.immediate || {};
+
+    // Prefer single visual writer (AnimationEngine) when available
+    if (typeof AnimationEngine !== 'undefined' && AnimationEngine && typeof AnimationEngine.play === 'function' && res.playbackEvents) {
+        await AnimationEngine.play(res.playbackEvents);
+    } else if (typeof runMoveVisualSequence === 'function') {
+        await runMoveVisualSequence(move, hadSelection, phases, effects, immediate);
+    } else {
+        console.error('[MoveExecutor] No visual playback available (runMoveVisualSequence/AnimationEngine missing)');
+    }
+
+    // Finalize turn: pipeline handles the turn-end logic (do NOT call the CardLogic turn-end writer from UI)
+    if (isGameOver(gameState)) { showResult(); isProcessing = false; return; }
+
+    await onTurnStartLogic(gameState.currentPlayer);
+    console.log('[DEBUG][executeMoveViaPipeline] after onTurnStart', { gameStateCurrentPlayer: gameState.currentPlayer, isProcessing, isCardAnimating, pendingEffect: cardState.pendingEffectByPlayer });
+    if (gameState.currentPlayer === WHITE && !(__uiImpl_move_executor && __uiImpl_move_executor.DEBUG_HUMAN_VS_HUMAN)) {
+        isProcessing = true;
+        console.log('[DEBUG][executeMoveViaPipeline] scheduling CPU', { CPU_DELAY: CPU_TURN_DELAY_MS });
+        if (__uiImpl_move_executor && typeof __uiImpl_move_executor.scheduleCpuTurn === 'function') {
+            __uiImpl_move_executor.scheduleCpuTurn(CPU_TURN_DELAY_MS, () => {
+                console.log('[DEBUG][executeMoveViaPipeline] scheduled CPU callback firing, isProcessing, isCardAnimating', { isProcessing, isCardAnimating });
+                try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
+            });
+        } else {
+            // Fallback: call immediately in non-UI environments
+            try { processCpuTurn(); } catch (e) { console.error('[DEBUG][executeMoveViaPipeline] processCpuTurn threw', e); }
+        }
+    } else {
+        isProcessing = false;
+        emitBoardUpdate();
+    }
+}
+
+let deepClone = (obj) => (typeof globalThis !== 'undefined' && typeof globalThis.structuredClone === 'function') ? globalThis.structuredClone(obj) : JSON.parse(JSON.stringify(obj));
+if (typeof require === 'function') {
+  try { deepClone = require('../utils/deepClone'); } catch (e) { /* ignore in browser-like env */ }
+}
+
+function runPipelineDebugSnapshot(move, playerKey) {
+    try {
+        const action = { type: 'place', row: move.row, col: move.col };
+        return TurnPipeline.applyTurn(deepClone(cardState), deepClone(gameState), playerKey, action);
+    } catch (e) { return null; }
+}
+
+function comparePipelineSnapshot(snapshot, actualCardState, actualGameState) { }
+
+async function onTurnStartLogic(player) {
+    if (typeof onTurnStart === 'function') await onTurnStart(player);
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        executeMove,
+        executeMoveViaPipeline,
+        setUIImpl
+    };
+}
+
+// Expose for browser/global usage (legacy callers call executeMove directly)
+if (typeof window !== 'undefined') {
+    try { window.executeMove = executeMove; } catch (e) { /* ignore */ }
+}
+if (typeof globalThis !== 'undefined') {
+    try { globalThis.executeMove = executeMove; } catch (e) { /* ignore */ }
+}
+})();
