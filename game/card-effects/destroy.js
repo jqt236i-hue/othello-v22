@@ -51,11 +51,10 @@ async function executeDestroy(row, col, playerKey) {
         if (res.nextCardState) cardState = res.nextCardState;
         if (res.nextGameState) gameState = res.nextGameState;
 
-        // Playback visuals
-        if (typeof AnimationEngine !== 'undefined' && AnimationEngine && typeof AnimationEngine.play === 'function' && res.playbackEvents) {
-            await AnimationEngine.play(res.playbackEvents);
-        } else if (typeof runMoveVisualSequence === 'function' && res.playbackEvents) {
-            await runMoveVisualSequence({ row, col }, true, {}, {}, {}); // minimal params; playbackEvents used by engine
+        // Emit playback request to UI via presentationEvents (UI/PlaybackEngine should consume and play)
+        if (res.playbackEvents && res.playbackEvents.length) {
+            cardState.presentationEvents = cardState.presentationEvents || [];
+            cardState.presentationEvents.push({ type: 'PLAYBACK_EVENTS', events: res.playbackEvents, meta: { row, col, cause: 'DESTROY' } });
         }
 
         addLog(LOG_MESSAGES.destroyApplied(playerKey === 'black' ? '黒' : '白', posToNotation(row, col)));

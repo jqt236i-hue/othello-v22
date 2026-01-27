@@ -75,13 +75,12 @@ async function executeMoveViaPipeline(move, hadSelection, playerKey) {
     const effects = res.placementEffects || {};
     const immediate = res.immediate || {};
 
-    // Prefer single visual writer (AnimationEngine) when available
-    if (typeof AnimationEngine !== 'undefined' && AnimationEngine && typeof AnimationEngine.play === 'function' && res.playbackEvents) {
-        await AnimationEngine.play(res.playbackEvents);
-    } else if (typeof runMoveVisualSequence === 'function') {
-        await runMoveVisualSequence(move, hadSelection, phases, effects, immediate);
+    // Request UI-side playback by emitting a presentation event (Playback should be performed by UI's PlaybackEngine)
+    if (res.playbackEvents && res.playbackEvents.length) {
+        cardState.presentationEvents = cardState.presentationEvents || [];
+        cardState.presentationEvents.push({ type: 'PLAYBACK_EVENTS', events: res.playbackEvents, meta: { move, phases, effects, immediate } });
     } else {
-        console.error('[MoveExecutor] No visual playback available (runMoveVisualSequence/AnimationEngine missing)');
+        // No playback events produced; nothing for the UI to play
     }
 
     // Finalize turn: pipeline handles the turn-end logic (do NOT call the CardLogic turn-end writer from UI)
