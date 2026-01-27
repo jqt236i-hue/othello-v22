@@ -135,6 +135,17 @@ function getPlayerName(player) {
     return player === BLACK ? '黒' : '白';
 }
 
+// Request a UI render safely: prefer emitBoardUpdate but retain noanim/test fallback
+function requestUIRender() {
+    if (typeof emitBoardUpdate === 'function') {
+        try { emitBoardUpdate(); } catch (e) { /* ignore UI errors */ }
+    } else {
+        // NO-ANIM / test environments: fall back to direct render calls if available
+        try { if (typeof renderBoard === 'function') renderBoard(); } catch (e) { /* ignore */ }
+        try { if (typeof renderCardUI === 'function') renderCardUI(); } catch (e) { /* ignore */ }
+    }
+}
+
 function resetGame() {
     // Auto mode removed: nothing to stop or reset
 
@@ -334,9 +345,7 @@ async function onTurnStart(player) {
     emitCardStateChange(); // Updates hand enablement
 
     // 6. Render
-    if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
-    else if (typeof renderBoard === 'function') renderBoard();
-    if (typeof renderCardUI === 'function') renderCardUI();
+    requestUIRender();
 
     // 7. DEBUG: Shared Hand Logic (Move White's cards to Black)
     if (typeof __uiImpl !== 'undefined' && __uiImpl && __uiImpl.DEBUG_HUMAN_VS_HUMAN) {
@@ -394,7 +403,9 @@ if (typeof module !== 'undefined' && module.exports) {
         setUIImpl,
         startActionSaveInterval,
         stopActionSaveInterval,
-        watchdogPing
+        watchdogPing,
+        // Expose helper for testing / minimal UI integrations
+        requestUIRender
     };
 }
 // Periodic ActionManager save: moved to UI. Expose start/stop functions so UI can opt-in.
