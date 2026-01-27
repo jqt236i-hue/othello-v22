@@ -89,7 +89,7 @@
         try {
             // First, let the UI PlaybackEngine consume well-known presentation events (PLAYBACK_EVENTS / SCHEDULE_CPU_TURN)
             try {
-                const Playback = (typeof require === 'function') ? require('../ui/playback-engine') : (typeof window !== 'undefined' ? window.PlaybackEngine : null);
+                const Playback = (typeof window !== 'undefined' && window.PlaybackEngine) ? window.PlaybackEngine : (typeof require === 'function' ? require('../ui/playback-engine') : null);
                 if (Playback && typeof Playback.playPresentationEvents === 'function') {
                     try {
                         await Playback.playPresentationEvents(cardState, {

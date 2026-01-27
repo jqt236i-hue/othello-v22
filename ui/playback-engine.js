@@ -43,3 +43,8 @@ async function playPresentationEvents(cardState = {}, deps = {}) {
 }
 
 module.exports = { playPresentationEvents, setUIImpl };
+
+// Expose for browser global usage so index.html wrappers can access PlaybackEngine
+if (typeof window !== 'undefined') {
+    try { if (typeof window.PlaybackEngine === 'undefined') window.PlaybackEngine = { playPresentationEvents, setUIImpl }; } catch (e) { /* ignore */ }
+}
