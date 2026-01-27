@@ -350,12 +350,16 @@ async function onTurnStart(player) {
         await processHyperactiveMovesAtTurnStart(player, null, _startEvents);
     }
 
-    // 5. Update UI
-    emitGameStateChange(); // Updates status panel, active effects
-    emitCardStateChange(); // Updates hand enablement
-
-    // 6. Render
-    requestUIRender();
+    // 5. Update UI — queue a STATE_UPDATED presentation event; UI should consume and perform actual emits/renders
+    try {
+        const UiNotifier = require('./turn/ui-notifier');
+        UiNotifier.notifyUI(cardState, gameState, { stateChanged: true, cardStateChanged: true, render: true });
+    } catch (e) {
+        // As a safe fallback in unusual environments, keep the old behavior
+        try { if (typeof emitGameStateChange === 'function') emitGameStateChange(); } catch (e2) {}
+        try { if (typeof emitCardStateChange === 'function') emitCardStateChange(); } catch (e2) {}
+        requestUIRender();
+    }
 
     // 7. DEBUG: Shared Hand Logic (Move White's cards to Black)
     if (typeof __uiImpl !== 'undefined' && __uiImpl && __uiImpl.DEBUG_HUMAN_VS_HUMAN) {
