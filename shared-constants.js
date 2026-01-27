@@ -109,7 +109,7 @@
         { id: 'breeding_01', name: '繁殖の意志', type: 'BREEDING_WILL', cost: 16, desc: '次に置く石を儀式石化。配置ターン即時＋自ターン開始時、周囲8マスの空きマスに石を1個生成。生成石で挟める場合は通常反転（反転数はチャージ対象）。持続3ターン（配置ターン含め最大4回生成）で儀式石は破壊。' },
 
         // HYPERACTIVE_WILL (多動の意志) - 1 card, cost: 8
-        { id: 'hyperactive_01', name: '多動の意志', type: 'HYPERACTIVE_WILL', cost: 8, desc: '次に置く石を多動石化。配置ターン即時＋両者ターン開始時に周囲8マスの空きへランダム移動し、移動後に挟める場合は通常反転。' },
+        { id: 'hyperactive_01', name: '多動の意志', type: 'HYPERACTIVE_WILL', cost: 8, desc: '次に置く石を多動石化。両者のターン開始時に、周囲8マスの空きへランダムに1マス移動し、移動後に挟める場合は通常反転。' },
 
         // PLUNDER_WILL (吸収の意志) - 1 card, cost: 4
         { id: 'plunder_will', name: '吸収の意志', type: 'PLUNDER_WILL', cost: 4, desc: '次の反転数だけ相手の布石を奪う。' },
