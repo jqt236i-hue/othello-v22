@@ -61,19 +61,22 @@
 ---
 
 ## 進捗（現時点）
-- ステータス: **90% 完了** ✅ (ローカル作業完了。残り: CI gate と visual E2E の統合、リモート PR 作成)
+- ステータス: **95% 完了** ✅ (ローカル作業完了 + CIトリアージ/修正を実行。残り: PR CI 最終確認、Visual E2E のベースライン取りと PR の統合)
 - 実施済み:
   - `CHANGE` -> `flip` のマッピング修正（`game/turn/pipeline_ui_adapter.js`）
   - タイマーの抽象化を利用するようにフォールバック改修（`game/move-executor-visuals.js`）
   - UI 側アニメ API 土台の追加（`ui/animation-api.js` シム）
   - 特殊効果（`game/special-effects/*`）の UI 直接呼び出しを `presentationEvent` 発行へ置換（`hyperactive.js`, `dragons.js`）
   - 単体テストの追加（`tests/unit/game/*`, `tests/unit/ui/*`）とローカルでのテスト実行パス
-  - 変更を `feature/animation-foundation` ブランチへコミット（ローカル）
+  - 旧 `window` 参照の削除と `globalThis` への置換、コメント内の直接 `setTimeout` 言及の削除（`game/*`） → `check:game-purity` を通過
+  - `animations/*` の Phase2 stub を削除（ローカル）および修正を `feature/animation-foundation` にコミット・push
+  - Visual E2E CI のワークフローを別ブランチ `feature/visual-e2e-ci` に追加（非ブロッキングジョブ、アーティファクトをアップロード）
 - 未完了:
-  - CI 上の gate 追加（`check:game-purity` / visual E2E gate）
-  - Visual E2E（visual-diff）テンプレと PR ワークフローの連携
+  - PR 上の CI（GitHub Actions）での完全合格確認（実行中／監視中）
+  - Visual E2E のベースライン取得（ローカルで `npm run test:e2e:present-visual` → baseline 作成 → baseline をレビューしてコミット）
+  - Visual E2E を PR gate（必須チェック）に昇格させるプランニング
 
-**注:** `animations/*` の Phase2 stub は削除済（ローカルコミット）。リモートへ push して PR を作成してください。
+**注:** `animations/*` の Phase2 stub は削除済（ローカルコミット・リモート push 済）。PR #1（`feature/animation-foundation`）および `feature/visual-e2e-ci` を作成済。
 
 ---
 
