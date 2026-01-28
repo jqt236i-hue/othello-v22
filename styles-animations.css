@@ -21,3 +21,21 @@
     opacity: 0;
     transform: scale(0.8) translateY(10px);
 }
+
+/* Stone flip animation */
+.disc {
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(.2,.85,.3,1);
+}
+
+/* flip class performs a 180deg Y rotation */
+.disc.flip {
+    transform: rotateY(180deg);
+}
+
+/* destroy fade fallback */
+.disc.destroy-fade {
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+}

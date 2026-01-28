@@ -1,145 +1,134 @@
-# 盤面アニメーション（石の移動/反転/消滅）分離・追加：実行計画書 v2
+# 盤面アニメーション分離・拡張 実行計画書（精密版）
 
 最終更新: 2026-01-28
-
-## 目的
-- 盤面で起こる石の動き（多動石の移動・破壊のフェードアウト・反転モーション等）を **ゲームロジックから分離**して実装できる状態にする。
-- 「古いアニメーション実装の残骸」が混ざって二重実装にならないように、現状を棚卸しして整理する。
-
-## 前提（このリポジトリの設計方針）
-- `game/**` はブラウザAPI/時間APIに依存しない（`.github/instructions/game-layer.instructions.md`）。
-- 視覚演出は `presentationEvents[]` / `PLAYBACK_EVENTS` を通じて UI が再生する（直接 `game/**` から DOM/アニメ関数を呼ばない）。
-- テスト/コマンド実行は **提案→承認→実行**（デフォルトで自動実行しない）。
+対象: `othello_v2`
 
 ---
 
-## 現状整理（重要：すでに存在する仕組み）
-盤面アニメーションの「分離の土台」はすでに概ね揃っています。
-
-- ルール層のイベント出力: `game/logic/board_ops.js`
-  - `SPAWN` / `DESTROY` / `CHANGE` / `MOVE` を `cardState.presentationEvents` に積む
-  - 競合回避用に `cardState._presentationEventsPersist` も保持
-- 変換（橋渡し）: `game/turn/pipeline_ui_adapter.js`
-  - `presentationEvents` → UI向け `playbackEvents` に変換
-- UI 側の消費: `ui/playback-engine.js`
-  - `PLAYBACK_EVENTS` を消費し `AnimationEngine.play(payload)` を呼ぶ
-- 盤面の単一再生エンジン: `ui/animation-engine.js`
-  - `place / flip / destroy / spawn / move` を（理想は）ここだけで再生
-
-### いまボトルネックになり得る点
-- `game/turn/pipeline_ui_adapter.js` が `CHANGE -> type: 'change'` を出しているが、`ui/animation-engine.js` 側は `flip` を期待している（`ui/animation-constants.js` の `EVENT_TYPES.FLIP`）。
-  - この不一致がある限り「反転モーション」を作っても再生されない（未知イベント扱いのフォールバックになる）。
+## 目的（Goal）
+- 盤面の石アニメーション（反転/移動/消滅/出現/特殊演出）を **ゲームロジックから完全に分離**して実装する。
+- オンライン同期・リプレイ・将来拡張に耐える **イベント駆動の一貫した再生基盤** を整える。
+- バグりにくい（再現性/安全性/切り戻し容易）運用を前提に **小さなPR単位**で進める。
 
 ---
 
-## 旧アニメーション残骸（現状の確認結果）
-### 1) `animations/` フォルダ
-- `animations/*` は Phase2 の **REMOVED stub** が残っています（読み込まれると `console.warn` するだけ）。
-- 参照はほぼ「ドキュメント/テンプレ」側に限られ、実行経路の中心は `ui/animation-engine.js` に寄っています。
-- ただし、**物理的に残っている**ため「残留していないか不安」の原因になります。
-
-### 2) ゲーム層からの“直接アニメ呼び出し”の残留
-- `game/special-effects/dragons.js` / `game/special-effects/hyperactive.js` などに `applyFlipAnimations` のような UI 関数呼び出しが残り得ます。
-- これらは最終的に **presentationEvents ベースへ移譲**してゼロにするのが目標です。
+## 非目的（Non‑Goals）
+- ルールや勝敗ロジックの変更はしない（必要なら `01-rulebook.md` 先行更新）。
+- 旧UIの全面刷新や大規模UI改修は行わない。
+- ネット対戦の通信実装そのものは本計画に含めない（ただし、後工程で実装できる状態を担保する）。
 
 ---
 
-## ゴール（受け入れ条件 / DoD）
-最低限、次が満たされること。
-
-1. 盤面イベント（`MOVE/DESTROY/CHANGE`）が UI で **意図したモーション**として再生される
-   - 多動石の移動: スムーズ移動
-   - 破壊: フェードアウト → 消える
-   - 反転: flip モーション（または仕様に沿う動き）
-2. `game/**` から UI/DOM/時間APIを直接呼ばない（分離が崩れない）
-3. 旧残骸（`animations/*`）が「参照ゼロ」かつ、必要なら削除できる状態
+## 前提・制約
+- `game/**` は **ブラウザAPI/時間API/DOM** を使わない。
+- 盤面演出は `presentationEvents[]` / `PLAYBACK_EVENTS` を通じて **UIのみが再生**する。
+- テスト/コマンド実行は **提案 → 承認 → 実行**（デフォルトで自動実行しない）。
 
 ---
 
-## 実行手順（小PRで段階的）
+## 現行アーキテクチャ（前提となる流れ）
+1) 盤面変更の事実: `game/logic/board_ops.js` が `SPAWN/DESTROY/CHANGE/MOVE` を `presentationEvents` に追加
+2) 変換: `game/turn/pipeline_ui_adapter.js` が `presentationEvents → playbackEvents`
+3) 再生: `ui/playback-engine.js` が `AnimationEngine.play(payload)` を呼ぶ
+4) 単一再生: `ui/animation-engine.js` が `place/flip/destroy/spawn/move` を実再生
+
+> 重要: `CHANGE -> type: 'change'` と `AnimationEngine` の `flip` が不一致であるため、**反転が再生されない可能性がある**。
 
 ---
 
-## 進捗（現時点）
-- ステータス: **95% 完了** ✅ (ローカル作業完了 + CIトリアージ/修正を実行。残り: PR CI 最終確認、Visual E2E のベースライン取りと PR の統合)
-- 実施済み:
-  - `CHANGE` -> `flip` のマッピング修正（`game/turn/pipeline_ui_adapter.js`）
-  - タイマーの抽象化を利用するようにフォールバック改修（`game/move-executor-visuals.js`）
-  - UI 側アニメ API 土台の追加（`ui/animation-api.js` シム）
-  - 特殊効果（`game/special-effects/*`）の UI 直接呼び出しを `presentationEvent` 発行へ置換（`hyperactive.js`, `dragons.js`）
-  - 単体テストの追加（`tests/unit/game/*`, `tests/unit/ui/*`）とローカルでのテスト実行パス
-  - 旧 `window` 参照の削除と `globalThis` への置換、コメント内の直接 `setTimeout` 言及の削除（`game/*`） → `check:game-purity` を通過
-  - `animations/*` の Phase2 stub を削除（ローカル）および修正を `feature/animation-foundation` にコミット・push
-  - Visual E2E CI のワークフローを別ブランチ `feature/visual-e2e-ci` に追加（非ブロッキングジョブ、アーティファクトをアップロード）
-- 未完了:
-  - PR 上の CI（GitHub Actions）での完全合格確認（実行中／監視中）
-  - Visual E2E のベースライン取得（ローカルで `npm run test:e2e:present-visual` → baseline 作成 → baseline をレビューしてコミット）
-  - Visual E2E を PR gate（必須チェック）に昇格させるプランニング
-
-**注:** `animations/*` の Phase2 stub は削除済（ローカルコミット・リモート push 済）。PR #1（`feature/animation-foundation`）および `feature/visual-e2e-ci` を作成済。
-
----
-
-
-
-### PR0: 棚卸し（ドキュメントのみ）
-目的: どれが “現役のアニメ基盤” で、どれが “残骸” かを明文化。
-- 追記する内容（この計画書に追記でOK）
-  - 現役: `BoardOps -> TurnPipelineUIAdapter -> PlaybackEngine -> AnimationEngine`
-  - 残骸: `animations/*`（REMOVED stub）
-  - “直接呼び出し”候補: `applyFlipAnimations`, `playHandAnimation` など
-
-### PR1: イベント名/プロトコル整合（最優先）
-目的: `CHANGE` が UI で “flip” として確実に再生されるようにする。
-- 変更案
-  - `game/turn/pipeline_ui_adapter.js`: `CHANGE -> pEvent.type = 'flip'` に変更
-- 受け入れ
-  - 反転が `AnimationEngine.handleFlip` を通ること
-
-### PR2: 盤面アニメの実装（UI側のみ）
-目的: `flip/destroy/move` の見た目を仕様に沿って整備する。
-- 変更候補
-  - `ui/animation-engine.js`
-    - `handleFlip`: いま suppressed なら、仕様に合わせて flip motion を有効化
-    - `handleDestroy`: フェードアウト（CSS class + animationend）
-    - `handleMove`: from→to の translate アニメ（セル座標差分を使う）
-  - `ui/stone-visuals.js` / `ui/animation-utils.js` / CSS
-    - アニメ用クラス/キーframes/transition を集約
-- 重要
-  - UI は「状態を書き換えない」。`events` を再生して見た目を変えるだけ。
-
-### PR3: “直接呼び出し”の残留を presentationEvents へ移譲
-目的: `game/**` から UI 関数を直接呼ぶ残骸を減らす。
-- 方針
-  - `applyFlipAnimations(...)` のような呼び出しは削除し、代わりに `BoardOps.changeAt/moveAt/destroyAt` が出すイベントで表現する
-  - 追加の演出が必要なら `CROSSFADE_STONE` 等の presentationEvent を足す（UIが解釈）
-
-### PR4: `animations/*` の扱いを確定
-目的: “残骸が残っている不安” を消す。
-- 選択肢A（おすすめ）: **削除**
-  - 参照がゼロであることを確認した上で `animations/*` を削除
-- 選択肢B: **隔離**
-  - `animations/README.ai.md` に「残す理由（互換/履歴）」を明記し、誤読を防ぐ
+## 実装優先度付き一覧（短く）
+1) **Flip（反転）** — 最優先
+   - トリガー: `CHANGE` → pipeline で `flip` にマップ
+   - 視覚: 「色を差し替え → 回転/めくりモーション（swap‑first then motion）」
+   - 受入基準: final state 一致 / no‑anim 即時反映
+2) **Destroy（消滅/フェード）** — 高
+   - トリガー: `DESTROY`
+   - 視覚: フェードアウト（必要なら ghost 残像）
+3) **Move（移動/多動石）** — 高
+   - トリガー: `MOVE`（from→to）
+   - 視覚: translate + easing + optional 微バウンド
+4) **Spawn/Place（出現）** — 中
+5) **Cross‑fade（特殊石オーバーレイ）** — 中
+6) **Hand/Card animations** — 中/低
+7) **HUD/Charge/Deck** — 低
+8) **Timers/Overlays** — 低
+9) **Phase/Turn transitions** — 低
+10) **NOANIM 対応** — 全体必須
 
 ---
 
-## 検証（デフォルトは提案のみ）
-- 手動確認（最優先）
-  - ブラウザで「多動石の移動」「破壊」「反転」が目視で分かること
-- コマンド（必要なら実行、実行前に承認を取る）
-  - 軽量: `npm run check:consistency`
-  - 短時間: `npm run test:quick`
-  - 視覚E2E（時間がかかる場合あり）: `npm run test:e2e:present`
+## 実行手順（精密・小PR）
+
+### PR‑0: 棚卸し（ドキュメントのみ）
+**目的**: 残骸/現役を明確化し、二重実装を防ぐ。
+- 成果物: 現役フロー図（BoardOps → Adapter → Playback → AnimationEngine）
+- 残骸: `animations/*` の stub を「残留扱い」として明記
+
+**PR Template / Checklist (必須)**
+- すべてのアニメ PR は `.github/PULL_REQUEST_TEMPLATE/animation-pr-template.md` を使用して作成すること。
+- PR 作成者は下のチェックリストを埋め、レビュワーの承認を得ること。
+
+
+### PR‑1: プロトコル整合（最優先）
+**目的**: 反転が必ず `AnimationEngine.handleFlip` に届くようにする。
+- 変更: `pipeline_ui_adapter.js` の `CHANGE` を `flip` にマップ
+- 受入: flip が再生経路に乗る（未知イベント扱いにならない）
+
+### PR‑2: Flip モーション実装
+**目的**: 反転の見た目を確定させる。
+- 変更: `ui/animation-engine.js` の `handleFlip` 実装、`styles-animations.css`
+- 受入: no‑anim で即時反映 / 最終状態一致
+
+### PR‑3: Destroy フェード
+**目的**: 消滅演出を UI で実装。
+- 変更: `handleDestroy` + CSS
+
+### PR‑4: Move（多動石移動）
+**目的**: from→to のスムーズ移動
+- 変更: `handleMove` + CSS
+
+### PR‑5: Spawn / Cross‑fade / Hand / 低優先度
+**目的**: UX の底上げ（任意・順次）
+
+### PR‑6: 旧残骸（animations/*）の扱いを決定
+- 選択肢A: 参照ゼロ確認後に削除
+- 選択肢B: READMEで「残す理由」を明記（誤読防止）
+
+---
+
+## 受入基準（DoD）
+- `presentationEvents` が UI で **意図したモーション**として再生される
+- `game/**` から UI/DOM/時間API への直接依存が増えていない
+- NOANIM / DISABLE_ANIMATIONS で即時反映にフォールバック
+- 失敗時に即 revert できる小PR構成
+
+---
+
+## オンライン/リプレイ互換（必須観点）
+- アニメは **状態を変えない**（UIは再生のみ）
+- `presentationEvents` は **JSON‑safe** であること
+- 同じ action 列で再生結果が一致する（視覚は差異があっても state は一致）
+
+---
+
+## 検証方針（実行は承認制）
+- まず手動確認（ブラウザで反転/消滅/移動が視認できる）
+- 必要なら軽量チェックのみ提案
 
 ---
 
 ## リスクと対策
-- リスク: UIがイベントを消費できず演出が飛ぶ
-  - 対策: `AnimationEngine` の watchdog / abortAndSync を前提に、最終状態へ同期できるようにする
-- リスク: “change/flip” のようなプロトコル不一致で何も再生されない
-  - 対策: PR1 を最優先にする（プロトコル整合が先）
+- **イベント不一致** → PR‑1 を最優先で実施
+- **二重実装** → `AnimationEngine` を単一再生に寄せる
+- **長時間テストで停止** → 原則「提案→承認→実行」
+
+---
+
+## 進め方（運用ルール）
+- 1アニメ = 1PR（小さく・可逆）
+- 「実装/検証/ロールバック手順」をPR本文に記載
 
 ---
 
 ## 非技術向け短い説明（1文）
-盤面で起きたことを「合図」として出し、見た目の動きは画面側だけが担当するように整理してから、移動・消える・反転のアニメを安全に追加します。
+盤面で起きたことはゲーム側が「合図」を出し、見た目の動きは画面側が担当する形で、ひとつずつ安全に追加します。

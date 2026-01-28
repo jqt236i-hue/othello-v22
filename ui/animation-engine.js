@@ -247,11 +247,22 @@
                 // Section 1.4 "Spec B": Swap visuals immediately, then motion.
                 this.syncDiscVisual(disc, after);
 
-                disc.classList.remove('flip');
-                disc.offsetHeight; // reset animation
-                // flip animation suppressed (visual-only change)
+                // Trigger flip animation: remove any previous, force reflow, then add
+                try {
+                    disc.classList.remove('flip');
+                    disc.offsetHeight; // reset animation
+                    if (!_isNoAnim()) {
+                        disc.classList.add('flip');
+                    }
+                } catch (e) { /* defensive: ignore */ }
 
-                return this._sleep(FLIP_MS);
+                // Wait for flip animation to complete (no-op in NOANIM)
+                const res = await this._sleep(FLIP_MS);
+
+                // Ensure flip class is removed so it can be re-added on next flip
+                try { disc.classList.remove('flip'); } catch (e) { }
+
+                return res;
             });
             await Promise.all(promises);
         }
