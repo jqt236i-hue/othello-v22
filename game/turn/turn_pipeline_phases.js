@@ -95,9 +95,13 @@
                 const regenRes = CardLogic.applyRegenAfterFlips(cardState, gameState, flips, ownerKey);
                 if (regenRes && regenRes.regened && regenRes.regened.length) regenTriggered.push(...regenRes.regened);
                 if (regenRes && regenRes.captureFlips && regenRes.captureFlips.length) {
-                    regenCaptureFlips.push(...regenRes.captureFlips);
-                    regenCaptureByOwner[ownerKey] = regenCaptureByOwner[ownerKey] || [];
-                    regenCaptureByOwner[ownerKey].push(...regenRes.captureFlips);
+                    // regenRes.captureFlips now include owner info; aggregate positions and per-regen-owner buckets
+                    for (const p of regenRes.captureFlips) {
+                        regenCaptureFlips.push({ row: p.row, col: p.col });
+                        const rOwner = p.owner || ownerKey;
+                        regenCaptureByOwner[rOwner] = regenCaptureByOwner[rOwner] || [];
+                        regenCaptureByOwner[rOwner].push({ row: p.row, col: p.col });
+                    }
                 }
             }
             if (regenCaptureFlips.length && typeof CardLogic.clearHyperactiveAtPositions === 'function') {

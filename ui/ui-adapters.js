@@ -41,15 +41,15 @@ function pulseDeckUI() {
 function whenDocumentReady(cb) {
     try {
         if (typeof document === 'undefined') {
-            setTimeout(cb, 0);
+            (typeof queueMicrotask === 'function' ? queueMicrotask : (fn => Promise.resolve().then(fn)))(cb);
             return;
         }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', cb, { once: true });
         } else {
-            setTimeout(cb, 0);
+            (typeof queueMicrotask === 'function' ? queueMicrotask : (fn => Promise.resolve().then(fn)))(cb);
         }
-    } catch (e) { setTimeout(cb, 0); }
+    } catch (e) { (typeof queueMicrotask === 'function' ? queueMicrotask : (fn => Promise.resolve().then(fn)))(cb); }
 }
 
 function isDocumentHidden() {

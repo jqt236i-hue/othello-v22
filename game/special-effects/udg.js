@@ -3,6 +3,9 @@
  * @description Ultimate Destroy God effect handlers
  */
 
+var mv = (typeof mv !== 'undefined') ? mv : null;
+try { mv = (typeof require === 'function') ? require('../move-executor-visuals') : (typeof globalThis !== 'undefined' ? globalThis.mv : mv); } catch (e) { mv = mv || null; }
+
 /**
  * Process ultimate destroy gods: destroy surrounding enemy stones (Destroy)
  * @async
@@ -51,7 +54,7 @@ async function processUltimateDestroyGodsAtTurnStart(player, precomputedResult =
     if (result.destroyed.length > 0) {
         const unique = new Map();
         for (const p of result.destroyed) unique.set(`${p.row},${p.col}`, p);
-        await Promise.all(Array.from(unique.values()).map(p => animateFadeOutAt(p.row, p.col)));
+        await Promise.all(Array.from(unique.values()).map(p => (mv && typeof mv.animateFadeOutAt === 'function') ? mv.animateFadeOutAt(p.row, p.col) : Promise.resolve()));
     }
 
     // Fade-out expired anchors AFTER destroying surroundings
@@ -59,7 +62,7 @@ async function processUltimateDestroyGodsAtTurnStart(player, precomputedResult =
         const unique = new Map();
         for (const p of result.expired) unique.set(`${p.row},${p.col}`, p);
         for (const p of unique.values()) {
-            await animateFadeOutAt(p.row, p.col, { createGhost: true, color: player, effectKey: 'ultimateDestroyGod' });
+            if (mv && typeof mv.animateFadeOutAt === 'function') await mv.animateFadeOutAt(p.row, p.col, { createGhost: true, color: player, effectKey: 'ultimateDestroyGod' });
         }
     }
 
@@ -83,7 +86,7 @@ async function processUltimateDestroyGodImmediateAtPlacement(player, row, col, p
         addLog(LOG_MESSAGES.udgDestroyedImmediate(getPlayerName(player), result.destroyed.length));
         const unique = new Map();
         for (const p of result.destroyed) unique.set(`${p.row},${p.col}`, p);
-        await Promise.all(Array.from(unique.values()).map(p => animateFadeOutAt(p.row, p.col)));
+        await Promise.all(Array.from(unique.values()).map(p => (mv && typeof mv.animateFadeOutAt === 'function') ? mv.animateFadeOutAt(p.row, p.col) : Promise.resolve()));
     }
 
     emitBoardUpdate();

@@ -23,6 +23,20 @@ if (typeof global.requestAnimationFrame === 'undefined') {
     global.cancelAnimationFrame = function (id) { clearTimeout(id); };
 }
 
+// Common no-op/compat globals used across UI and game tests
+if (typeof global.emitBoardUpdate === 'undefined') global.emitBoardUpdate = function () {};
+if (typeof global.emitGameStateChange === 'undefined') global.emitGameStateChange = function () {};
+if (typeof global.emitPresentationEvent === 'undefined') global.emitPresentationEvent = function (cardState, ev) {
+    try { if (cardState && Array.isArray(cardState.presentationEvents)) cardState.presentationEvents.push(ev); }
+    catch (e) { /* ignore */ }
+};
+if (typeof global.renderBoard === 'undefined') global.renderBoard = function () {};
+if (typeof global.addLog === 'undefined') global.addLog = function () {};
+if (typeof global.applyFlipAnimations === 'undefined') global.applyFlipAnimations = function () { /* shim for legacy tests */ };
+
+// Ensure the animation API module is loaded for tests
+try { require('../ui/animation-api'); } catch (e) { /* ignore if not present */ }
+
 // Centralized timer tracking for tests: register intervals/timeouts so we can clear them after each test
 global.__jest_tracked_intervals = new Set();
 global.__jest_tracked_timeouts = new Set();
@@ -59,4 +73,11 @@ global.__clearRegisteredTimers = function() {
         global.__jest_tracked_timeouts.clear();
     } catch (e) { /* best-effort */ }
 };
+
+// Extra debug: surface uncaught rejections / exceptions and process exit
+process.on('exit', (code) => { console.log('***PROCESS EXIT***', code); });
+process.on('uncaughtException', (err) => { console.error('***UNCAUGHT_EXCEPTION***', err && err.stack ? err.stack : err); });
+process.on('unhandledRejection', (reason) => { console.error('***UNHANDLED_REJECTION***', reason && reason.stack ? reason.stack : reason); });
+process.on('SIGTERM', () => { console.log('***SIGTERM***'); process.exit(1); });
+process.on('SIGINT', () => { console.log('***SIGINT***'); process.exit(1); });
 

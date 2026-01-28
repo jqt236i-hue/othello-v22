@@ -110,7 +110,16 @@
 
         // Provide scheduling helper to game/move-executor so CPU turns are delayed to allow visuals to complete
         connect('./move-executor-visuals', '../game/move-executor', (uiMod, timers) => ({
-            scheduleCpuTurn: (ms, cb) => { return timers.waitMs(ms || 0).then(cb); }
+            scheduleCpuTurn: (ms, cb) => { return timers.waitMs(ms || 0).then(cb); },
+            getHumanPlayMode: () => {
+                try {
+                    if (typeof window !== 'undefined' && typeof window.HUMAN_PLAY_MODE === 'string') return window.HUMAN_PLAY_MODE;
+                } catch (e) { /* ignore */ }
+                try {
+                    if (typeof __uiImpl_turn_manager !== 'undefined' && typeof __uiImpl_turn_manager.humanPlayMode === 'string') return __uiImpl_turn_manager.humanPlayMode;
+                } catch (e) { /* ignore */ }
+                return 'black';
+            }
         }));
 
         // Visual effects map
@@ -130,6 +139,24 @@
                     isDocumentHidden: () => (typeof document !== 'undefined' && document.hidden) || false,
                     pulseDeckUI: () => {},
                     scheduleCpuTurn: (ms, cb) => { timersImpl.waitMs(ms || 0).then(cb); }
+                });
+            }
+        } catch (e) { /* ignore */ }
+
+        // Presentation handler: wire scheduleCpuTurn to call into CPU module via timersImpl (avoids global references)
+        try {
+            const ph = require('./presentation-handler');
+            if (ph && typeof ph.setUIImpl === 'function') {
+                ph.setUIImpl({
+                    scheduleCpuTurn: (ms, cb) => {
+                        // Avoid invoking CPU directly here; prefer the Playback/PresentationHandler to
+                        // decide whether to call CPU. Call only the provided callback after delay so
+                        // the PresentationHandler's safety/ensure logic can control actual invocation.
+                        return timersImpl.waitMs(ms || 0).then(() => {
+                            try { console.log('[DIAG][BOOT] scheduleCpuTurn callback invoked', { humanMode: (typeof window !== 'undefined' ? window.HUMAN_PLAY_MODE : null), time: Date.now(), stack: (new Error()).stack.split('\n').slice(1,6).join('\n') }); } catch (e) {}
+                            try { if (typeof cb === 'function') cb(); } catch (e) { /* ignore callback errors */ }
+                        });
+                    }
                 });
             }
         } catch (e) { /* ignore */ }
@@ -154,6 +181,12 @@
             installGameDI();
         }
     } catch (e) { /* ignore */ }
+
+    // Default dedupe config for CPU fallback calls (can be overridden in tests or runtime)
+    try { if (typeof window !== 'undefined' && typeof window.CPU_DEDUPE_MS === 'undefined') window.CPU_DEDUPE_MS = 150; } catch (e) { /* ignore */ }
+
+    // Signal to external tests that UI DI/install has completed and basic UI is ready
+    try { if (typeof window !== 'undefined') window.__uiReady = true; } catch (e) { /* ignore */ }
 
     if (typeof module !== 'undefined' && module.exports) {
         return { addLog, updateBgmButtons, updateStatus, installGameDI };

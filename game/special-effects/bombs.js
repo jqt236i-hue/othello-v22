@@ -3,6 +3,9 @@
  * @description Bomb handling (tick + explosion UI)
  */
 
+var mv = (typeof mv !== 'undefined') ? mv : null;
+try { mv = (typeof require === 'function') ? require('../move-executor-visuals') : (typeof globalThis !== 'undefined' ? globalThis.mv : mv); } catch (e) { mv = mv || null; }
+
 /**
  * Process all bombs: decrement turn counters and explode those that reach 0
  * @async
@@ -59,10 +62,12 @@ async function processBombs(precomputedEvents = null) {
             if (destroyedKeySet.has(centerKey) && !alreadyAnimated.has(centerKey)) {
                 alreadyAnimated.add(centerKey);
                 const ownerVal = bombOwnerValByPos.get(centerKey);
-                await animateFadeOutAt(center.row, center.col, {
-                    createGhost: true,
-                    color: ownerVal
-                });
+                if (mv && typeof mv.animateFadeOutAt === 'function') {
+                    await mv.animateFadeOutAt(center.row, center.col, {
+                        createGhost: true,
+                        color: ownerVal
+                    });
+                }
             }
 
             // 2) surrounding 8 as batch
@@ -76,7 +81,7 @@ async function processBombs(precomputedEvents = null) {
                     const key = `${r},${c}`;
                     if (!destroyedKeySet.has(key) || alreadyAnimated.has(key)) continue;
                     alreadyAnimated.add(key);
-                    batch.push(animateFadeOutAt(r, c));
+                    batch.push(mv && typeof mv.animateFadeOutAt === 'function' ? mv.animateFadeOutAt(r, c) : Promise.resolve());
                 }
             }
             if (batch.length > 0) await Promise.all(batch);
@@ -88,7 +93,7 @@ async function processBombs(precomputedEvents = null) {
             const key = `${pos.row},${pos.col}`;
             if (alreadyAnimated.has(key)) continue;
             alreadyAnimated.add(key);
-            leftover.push(animateFadeOutAt(pos.row, pos.col));
+            leftover.push(mv && typeof mv.animateFadeOutAt === 'function' ? mv.animateFadeOutAt(pos.row, pos.col) : Promise.resolve());
         }
         if (leftover.length > 0) await Promise.all(leftover);
     }
@@ -117,7 +122,7 @@ async function explodeBombUI(row, col) {
             const c = col + dc;
             if (r >= 0 && r < 8 && c >= 0 && c < 8) {
                 // We blindly animate explosion on all 9 squares
-                tasks.push(animateDestroyAt(r, c));
+                tasks.push(mv && typeof mv.animateDestroyAt === 'function' ? mv.animateDestroyAt(r, c) : Promise.resolve());
             }
         }
     }

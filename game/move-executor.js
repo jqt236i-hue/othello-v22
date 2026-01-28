@@ -5,6 +5,18 @@
 let __uiImpl_move_executor = {};
 function setUIImpl(obj) { __uiImpl_move_executor = obj || {}; }
 
+function getHumanPlayMode() {
+    try {
+        if (__uiImpl_move_executor && typeof __uiImpl_move_executor.getHumanPlayMode === 'function') {
+            const mode = __uiImpl_move_executor.getHumanPlayMode();
+            if (typeof mode === 'string') return mode;
+        }
+    } catch (e) { /* ignore */ }
+    if (__uiImpl_move_executor && typeof __uiImpl_move_executor.humanPlayMode === 'string') return __uiImpl_move_executor.humanPlayMode;
+    if (__uiImpl_move_executor && __uiImpl_move_executor.DEBUG_HUMAN_VS_HUMAN) return 'both';
+    return 'black';
+}
+
 if (typeof CardLogic === 'undefined') {
     console.error('CardLogic/CoreLogic is not loaded.');
 }
@@ -88,10 +100,21 @@ async function executeMoveViaPipeline(move, hadSelection, playerKey) {
 
     await onTurnStartLogic(gameState.currentPlayer);
     // Record completion timestamp so CPU turns invoked immediately after can be deferred by CPU handler if necessary
-    try { global.__lastMoveCompletedAt = Date.now(); } catch (e) { /* ignore environments without global */ }
+    try {
+        try {
+            const cpu = require('../cpu/cpu-turn');
+            if (cpu && typeof cpu.setLastMoveCompletedAt === 'function') cpu.setLastMoveCompletedAt(Date.now());
+        } catch (e) {
+            try { global.__lastMoveCompletedAt = Date.now(); } catch (err) { /* ignore environments without global */ }
+        }
+    } catch (e) { /* defensive */ }
     console.log('[DEBUG][executeMoveViaPipeline] after onTurnStart', { gameStateCurrentPlayer: gameState.currentPlayer, isProcessing, isCardAnimating, pendingEffect: cardState.pendingEffectByPlayer });
-    if (gameState.currentPlayer === WHITE && !(__uiImpl_move_executor && __uiImpl_move_executor.DEBUG_HUMAN_VS_HUMAN)) {
+    const humanPlayMode = getHumanPlayMode();
+    const isHumanWhite = (humanPlayMode === 'white' || humanPlayMode === 'both');
+
+    if (gameState.currentPlayer === WHITE && !isHumanWhite) {
         isProcessing = true;
+        try { console.log('[DIAG][MOVE] schedule CPU request', { CPU_DELAY: CPU_TURN_DELAY_MS, humanPlayMode, time: Date.now(), stack: (new Error()).stack.split('\n').slice(1,6).join('\n') }); } catch (e) {}
         console.log('[DEBUG][executeMoveViaPipeline] scheduling CPU', { CPU_DELAY: CPU_TURN_DELAY_MS });
         if (__uiImpl_move_executor && typeof __uiImpl_move_executor.scheduleCpuTurn === 'function') {
             __uiImpl_move_executor.scheduleCpuTurn(CPU_TURN_DELAY_MS, () => {
@@ -104,6 +127,9 @@ async function executeMoveViaPipeline(move, hadSelection, playerKey) {
             try {
                 cardState.presentationEvents = cardState.presentationEvents || [];
                 cardState.presentationEvents.push({ type: 'SCHEDULE_CPU_TURN', delayMs: CPU_TURN_DELAY_MS, reason: 'CPU_TURN' });
+                // Trigger a UI update so presentation handlers can consume the scheduling request.
+                // In some browser flows, the last BOARD_UPDATED is emitted before this event is appended.
+                try { if (typeof emitBoardUpdate === 'function') emitBoardUpdate(); } catch (e) { /* ignore */ }
             } catch (e) {
                 console.error('[DEBUG][executeMoveViaPipeline] failed to emit SCHEDULE_CPU_TURN event', e);
             }

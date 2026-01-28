@@ -40,6 +40,14 @@ function initializeUI() {
 
     // Auto Toggle (simple)
     if (typeof setupAutoToggle === 'function') {
+        // Ensure auto is disabled on UI init to avoid accidental automatic play
+        try {
+            const Auto = (typeof require === 'function') ? require('../../game/auto') : (window.autoSimple || null);
+            if (Auto && typeof Auto.disable === 'function') {
+                Auto.disable();
+                console.log('[AUTO] disabled on UI init');
+            }
+        } catch (e) { /* ignore */ }
         setupAutoToggle(autoToggleBtn, smartBlack, smartWhite);
     }
 

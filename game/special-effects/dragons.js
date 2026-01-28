@@ -4,7 +4,7 @@
  */
 
 var mv = (typeof mv !== 'undefined') ? mv : null;
-try { mv = (typeof require === 'function') ? require('../move-executor-visuals') : (typeof window !== 'undefined' ? window.mv : mv); } catch (e) { mv = mv || null; }
+try { mv = (typeof require === 'function') ? require('../move-executor-visuals') : (typeof globalThis !== 'undefined' ? globalThis.mv : mv); } catch (e) { mv = mv || null; }
 
 /**
  * Process ultimate reverse dragons: convert surrounding enemy stones

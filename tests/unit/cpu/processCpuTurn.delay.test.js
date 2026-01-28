@@ -19,8 +19,8 @@ describe('processCpuTurn scheduling guard', () => {
         global.addLog = jest.fn();
         // Ensure CPU delay constant
         global.CPU_TURN_DELAY_MS = 600;
-        // Mark last move as just completed
-        global.__lastMoveCompletedAt = Date.now();
+        // Mark last move as just completed (module API)
+        cpu.setLastMoveCompletedAt(Date.now());
         // Ensure initial flags
         global.isCardAnimating = false;
         global.isProcessing = false;
@@ -36,7 +36,7 @@ describe('processCpuTurn scheduling guard', () => {
     });
 
     afterEach(() => {
-        try { delete global.__lastMoveCompletedAt; } catch (e) {}
+        cpu.setLastMoveCompletedAt(null);
         jest.clearAllTimers();
         jest.useRealTimers();
     });

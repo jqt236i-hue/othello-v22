@@ -217,18 +217,44 @@ function useSelectedCard() {
     // Animation
     if (typeof window !== 'undefined') window.isCardAnimating = true; else isCardAnimating = true;
 
-    if (typeof animateCardToCharge === 'function' && usedCardEl) {
-        animateCardToCharge(usedCardEl, true).then(() => {
+    // Use ui/move-executor-visuals helper when available; fallback to legacy global
+    try {
+        const uiMv = require('../ui/move-executor-visuals');
+        if (uiMv && typeof uiMv.animateCardToCharge === 'function' && usedCardEl) {
+            uiMv.animateCardToCharge(usedCardEl, true).then(() => {
+                if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
+                renderCardUI();
+                if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
+                else if (typeof renderBoard === 'function') renderBoard();
+            });
+        } else if (typeof window !== 'undefined' && typeof window.animateCardToCharge === 'function' && usedCardEl) {
+            window.animateCardToCharge(usedCardEl, true).then(() => {
+                if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
+                renderCardUI();
+                if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
+                else if (typeof renderBoard === 'function') renderBoard();
+            });
+        } else {
             if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
             renderCardUI();
             if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
             else if (typeof renderBoard === 'function') renderBoard();
-        });
-    } else {
-        if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
-        renderCardUI();
-        if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
-        else if (typeof renderBoard === 'function') renderBoard();
+        }
+    } catch (e) {
+        // If require fails (browser-only), fallback to existing global or no-op
+        if (typeof window !== 'undefined' && typeof window.animateCardToCharge === 'function' && usedCardEl) {
+            window.animateCardToCharge(usedCardEl, true).then(() => {
+                if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
+                renderCardUI();
+                if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
+                else if (typeof renderBoard === 'function') renderBoard();
+            });
+        } else {
+            if (typeof window !== 'undefined') window.isCardAnimating = false; else isCardAnimating = false;
+            renderCardUI();
+            if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
+            else if (typeof renderBoard === 'function') renderBoard();
+        }
     }
 }
 

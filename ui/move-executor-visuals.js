@@ -242,6 +242,70 @@ async function animateRegenBack(regenedPositions, flipperColor) {
     }
 }
 
+// Card animation helpers (UI-side)
+async function animateCardToCharge(cardEl, highlight) {
+    if (!_assertNotDuringPlayback()) return Promise.resolve();
+    // Delegate to any provided UI implementation
+    if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.animateCardToCharge === 'function') {
+        return __uiImpl.animateCardToCharge(cardEl, highlight);
+    }
+    // Fallback to global function if present (legacy)
+    // Legacy global fallback (browser-only)
+    if (typeof window !== 'undefined' && typeof window.animateCardToCharge === 'function') {
+        try { return window.animateCardToCharge(cardEl, highlight); } catch (e) { /* ignore */ }
+    }
+    return Promise.resolve();
+}
+
+async function animateCardTransfer(fromEl, toEl, options) {
+    if (!_assertNotDuringPlayback()) return Promise.resolve();
+    if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.animateCardTransfer === 'function') {
+        return __uiImpl.animateCardTransfer(fromEl, toEl, options);
+    }
+    return Promise.resolve();
+}
+
+async function playDrawAnimation(player, drawnCardId) {
+    if (!_assertNotDuringPlayback()) return Promise.resolve();
+    if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.playDrawAnimation === 'function') {
+        return __uiImpl.playDrawAnimation(player, drawnCardId);
+    }
+    // Legacy global
+    // Legacy global fallback (browser-only)
+    if (typeof window !== 'undefined' && typeof window.playDrawAnimation === 'function') {
+        try { return window.playDrawAnimation(player, drawnCardId); } catch (e) { /* ignore */ }
+    }
+    return Promise.resolve();
+}
+
+// Game-side wrappers for UI animations (safe no-op when UI not present)
+async function animateFadeOutAt(row, col, options) {
+    if (!_assertNotDuringPlayback()) return Promise.resolve();
+    if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.animateFadeOutAt === 'function') {
+        return __uiImpl.animateFadeOutAt(row, col, options);
+    }
+    // Default: no-op with preserved timing
+    const delay = (options && options.durationMs) ? options.durationMs : 0;
+    return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+async function animateDestroyAt(row, col, options) {
+    if (!_assertNotDuringPlayback()) return Promise.resolve();
+    if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.animateDestroyAt === 'function') {
+        return __uiImpl.animateDestroyAt(row, col, options);
+    }
+    const delay = (options && options.durationMs) ? options.durationMs : 0;
+    return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+async function animateHyperactiveMove(from, to, options) {
+    if (!_assertNotDuringPlayback()) return Promise.resolve();
+    if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.animateHyperactiveMove === 'function') {
+        return __uiImpl.animateHyperactiveMove(from, to, options);
+    }
+    return Promise.resolve();
+}
+
 function applyPendingSpecialstoneVisual(move, pendingType) {
     if (!_assertNotDuringPlayback()) return;
     if (!pendingType) return;
@@ -428,8 +492,14 @@ try {
             getTurnTransitionGapMs,
             animateFlipsWithDeferredColor,
             animateRegenBack,
-            applyPendingSpecialstoneVisual,
-            runMoveVisualSequence
+            animateFadeOutAt,
+            animateDestroyAt,
+            animateHyperactiveMove,
+            // Card Animation Helpers
+            animateCardToCharge,
+            animateCardTransfer,
+            playDrawAnimation,
+            updateDeckVisual,
         });
     }
 } catch (e) { /* not available in some environments */ }
@@ -446,6 +516,12 @@ if (typeof module !== 'undefined' && module.exports) {
         getTurnTransitionGapMs,
         animateFlipsWithDeferredColor,
         animateRegenBack,
+        animateFadeOutAt,
+        animateDestroyAt,
+        animateHyperactiveMove,
+        animateCardToCharge,
+        animateCardTransfer,
+        playDrawAnimation,
         applyPendingSpecialstoneVisual,
         runMoveVisualSequence
     };

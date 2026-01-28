@@ -24,6 +24,7 @@
 - 生成済バンドル: `ci-presentation-e2e.bundle`（リポジトリルート）
 - PR 下書き: `PR_DRAFT_CI_PRESENTATION.md`
 - 主要テスト: 単体テスト・プレゼンE2E（複数シナリオ）・ビジュアルスモーク・強化シーケンスはローカルで PASS
+- この PR には CPU の二重実行を防ぐ小変更（dedupe タイムスタンプ + UI の microtask 化）が含まれています。追加ユニットテストを含むため回帰が防げるはずです。
 - アーティファクト: `artifacts/visual_presentation/` に baseline と試行スクショ/差分あり
 
 ---
