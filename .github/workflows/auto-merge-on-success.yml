@@ -1,0 +1,30 @@
+name: Auto-merge labeled PRs on successful workflow runs
+
+on:
+  workflow_run:
+    types: [completed]
+
+jobs:
+  automerge:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto-merge PRs labeled 'automerge'
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const label = 'automerge';
+            const { data: prs } = await github.rest.pulls.list({ owner: context.repo.owner, repo: context.repo.repo, state: 'open' });
+            for (const pr of prs) {
+              const labels = pr.labels && pr.labels.map(l => l.name) || [];
+              if (!labels.includes(label)) continue;
+              // Refresh PR to get current mergeable state
+              const { data: prFull } = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number });
+              if (prFull.mergeable && prFull.mergeable_state === 'clean') {
+                await github.rest.pulls.merge({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number, merge_method: 'squash' });
+                core.info(`Merged PR #${pr.number}`);
+              } else {
+                core.info(`PR #${pr.number} not mergeable yet: ${prFull.mergeable_state}`);
+              }
+            }
