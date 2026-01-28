@@ -3,6 +3,9 @@
  * @description Hyperactive effect handlers
  */
 
+var mv = (typeof mv !== 'undefined') ? mv : null;
+try { mv = (typeof require === 'function') ? require('../move-executor-visuals') : (typeof window !== 'undefined' ? window.mv : mv); } catch (e) { mv = mv || null; }
+
 /**
  * Process hyperactive stone moves at turn start (both players).
  * Runs AFTER bombs/dragons/breeding.
@@ -82,14 +85,18 @@ async function processHyperactiveMovesAtTurnStart(player, precomputedResult = nu
     }
 
     // Animate using the pre-move DOM first, then sync to post-move state.
-    if (result.destroyed.length > 0 && typeof animateFadeOutAt === 'function') {
+    if (result.destroyed.length > 0) {
         for (const pos of result.destroyed) {
-            await animateFadeOutAt(pos.row, pos.col);
+            if (mv && typeof mv.animateFadeOutAt === 'function') {
+                await mv.animateFadeOutAt(pos.row, pos.col);
+            }
         }
     }
-    if (result.moved.length > 0 && typeof animateHyperactiveMove === 'function') {
+    if (result.moved.length > 0) {
         for (const m of result.moved) {
-            await animateHyperactiveMove(m.from, m.to);
+            if (mv && typeof mv.animateHyperactiveMove === 'function') {
+                await mv.animateHyperactiveMove(m.from, m.to);
+            }
         }
     }
     emitBoardUpdate();
@@ -137,8 +144,15 @@ async function processHyperactiveMovesAtTurnStart(player, precomputedResult = nu
         const flipCoords = result.flipped
             .filter(p => !regenedSet.has(`${p.row},${p.col}`))
             .map(p => [p.row, p.col]);
-        if (flipCoords.length > 0 && typeof applyFlipAnimations === 'function') {
-            applyFlipAnimations(flipCoords);
+        if (flipCoords.length > 0) {
+            // Emit CHANGE presentation events for each flip so UI handles flip visuals via Playback
+            for (const [r, c] of flipCoords) {
+                const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                if (typeof emitPresentationEvent === 'function') {
+                    emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                }
+            }
             await waitMs(delay);
         }
 
@@ -171,8 +185,14 @@ async function processHyperactiveMovesAtTurnStart(player, precomputedResult = nu
                 setDiscColorAt(pos.row, pos.col, -toColor);
             }
             const capCoords = regenCaptureFlips.map(p => [p.row, p.col]);
-            if (typeof applyFlipAnimations === 'function') {
-                applyFlipAnimations(capCoords);
+            if (capCoords.length > 0) {
+                for (const [r, c] of capCoords) {
+                    const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                    const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                    if (typeof emitPresentationEvent === 'function') {
+                        emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                    }
+                }
                 await waitMs(delay);
             }
             for (const pos of regenCaptureFlips) {
@@ -229,14 +249,18 @@ async function processHyperactiveImmediateAtPlacement(player, row, col, precompu
     }
 
     // Animate using the pre-move DOM first, then sync to post-move state.
-    if (result.destroyed.length > 0 && typeof animateFadeOutAt === 'function') {
+    if (result.destroyed.length > 0) {
         for (const pos of result.destroyed) {
-            await animateFadeOutAt(pos.row, pos.col);
+            if (mv && typeof mv.animateFadeOutAt === 'function') {
+                await mv.animateFadeOutAt(pos.row, pos.col);
+            }
         }
     }
-    if (result.moved.length > 0 && typeof animateHyperactiveMove === 'function') {
+    if (result.moved.length > 0) {
         for (const m of result.moved) {
-            await animateHyperactiveMove(m.from, m.to);
+            if (mv && typeof mv.animateHyperactiveMove === 'function') {
+                await mv.animateHyperactiveMove(m.from, m.to);
+            }
         }
     }
     emitBoardUpdate();
@@ -273,8 +297,14 @@ async function processHyperactiveImmediateAtPlacement(player, row, col, precompu
         const flipCoords = result.flipped
             .filter(p => !regenedSet.has(`${p.row},${p.col}`))
             .map(p => [p.row, p.col]);
-        if (flipCoords.length > 0 && typeof applyFlipAnimations === 'function') {
-            applyFlipAnimations(flipCoords);
+        if (flipCoords.length > 0) {
+            for (const [r, c] of flipCoords) {
+                const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                if (typeof emitPresentationEvent === 'function') {
+                    emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                }
+            }
             await waitMs(delay);
         }
 
@@ -299,8 +329,14 @@ async function processHyperactiveImmediateAtPlacement(player, row, col, precompu
                 setDiscColorAt(pos.row, pos.col, -to);
             }
             const capCoords = regenCaptureFlips.map(p => [p.row, p.col]);
-            if (typeof applyFlipAnimations === 'function') {
-                applyFlipAnimations(capCoords);
+            if (capCoords.length > 0) {
+                for (const [r, c] of capCoords) {
+                    const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                    const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                    if (typeof emitPresentationEvent === 'function') {
+                        emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                    }
+                }
                 await waitMs(delay);
             }
             for (const pos of regenCaptureFlips) {

@@ -74,7 +74,8 @@
                     pEvent.phase = currentPhase;
                     break;
                 case 'CHANGE':
-                    pEvent.type = 'change';
+                    // Map CHANGE -> flip to match UI AnimationEngine expectations (Spec B)
+                    pEvent.type = 'flip';
                     pEvent.targets = [{ r: ev.row, col: ev.col, ownerBefore: ev.ownerBefore, ownerAfter: ev.ownerAfter }];
                     currentPhase++;
                     pEvent.phase = currentPhase;

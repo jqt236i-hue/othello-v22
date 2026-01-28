@@ -3,11 +3,14 @@
  * @description Ultimate Reverse Dragon effect handlers
  */
 
+var mv = (typeof mv !== 'undefined') ? mv : null;
+try { mv = (typeof require === 'function') ? require('../move-executor-visuals') : (typeof window !== 'undefined' ? window.mv : mv); } catch (e) { mv = mv || null; }
+
 /**
  * Process ultimate reverse dragons: convert surrounding enemy stones
  * @async
  * @param {number} player - Current player (BLACK=1 or WHITE=-1)
- * @returns {Promise<void>}
+ * @returns {Promise<void}
  */
 async function processUltimateReverseDragonsAtTurnStart(player) {
     // Get dragons from unified specialStones
@@ -115,13 +118,17 @@ async function processUltimateReverseDragonsAtTurnStart(player) {
         // Flip suppression is handled by applyFlipAnimations below for consistency.
         // (No per-disc class toggles here.)
 
-        // Also call shared helper if available (keeps behavior consistent elsewhere)
-        if (typeof applyFlipAnimations === 'function') {
-            const flipCoords = result.converted
-                .filter(p => !regenedSet.has(`${p.row},${p.col}`))
-                .map(p => [p.row, p.col]);
-            if (flipCoords.length > 0) {
-                applyFlipAnimations(flipCoords);
+        // Emit CHANGE presentation events for converted flips so UI handles flip visuals via Playback
+        const flipCoords = result.converted
+            .filter(p => !regenedSet.has(`${p.row},${p.col}`))
+            .map(p => [p.row, p.col]);
+        if (flipCoords.length > 0) {
+            for (const [r, c] of flipCoords) {
+                const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                if (typeof emitPresentationEvent === 'function') {
+                    emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                }
             }
         }
 
@@ -144,8 +151,14 @@ async function processUltimateReverseDragonsAtTurnStart(player) {
             for (const pos of regenRes.captureFlips) {
                 setDiscColorAt(pos.row, pos.col, -player);
             }
-            if (capCoords.length > 0 && typeof applyFlipAnimations === 'function') {
-                applyFlipAnimations(capCoords);
+            if (capCoords.length > 0) {
+                for (const [r, c] of capCoords) {
+                    const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                    const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                    if (typeof emitPresentationEvent === 'function') {
+                        emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                    }
+                }
             }
             await waitMs(delay);
         }
@@ -153,7 +166,7 @@ async function processUltimateReverseDragonsAtTurnStart(player) {
 
     // Animate destroyed anchors (fade-out) after conversions
     for (const pos of result.destroyed) {
-        await animateFadeOutAt(pos.row, pos.col, { createGhost: true, color: player, effectKey: 'ultimateDragon' });
+        if (mv && typeof mv.animateFadeOutAt === 'function') await mv.animateFadeOutAt(pos.row, pos.col, { createGhost: true, color: player, effectKey: 'ultimateDragon' });
     }
 
     // Final UI sync after all animations
@@ -226,8 +239,14 @@ async function processUltimateReverseDragonImmediateAtPlacement(player, row, col
         const flipCoords = result.converted
             .filter(p => !regenedSet.has(`${p.row},${p.col}`))
             .map(p => [p.row, p.col]);
-        if (flipCoords.length > 0 && typeof applyFlipAnimations === 'function') {
-            applyFlipAnimations(flipCoords);
+        if (flipCoords.length > 0) {
+            for (const [r, c] of flipCoords) {
+                const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                if (typeof emitPresentationEvent === 'function') {
+                    emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                }
+            }
             // Wait for animation duration before finalizing colors
             await waitMs(delay);
         }
@@ -251,8 +270,14 @@ async function processUltimateReverseDragonImmediateAtPlacement(player, row, col
             for (const pos of regenRes.captureFlips) {
                 setDiscColorAt(pos.row, pos.col, -ownerColor);
             }
-            if (capCoords.length > 0 && typeof applyFlipAnimations === 'function') {
-                applyFlipAnimations(capCoords);
+            if (capCoords.length > 0) {
+                for (const [r, c] of capCoords) {
+                    const ownerAfter = (gameState.board[r][c] === BLACK) ? 'black' : 'white';
+                    const ownerBefore = ownerAfter === 'black' ? 'white' : 'black';
+                    if (typeof emitPresentationEvent === 'function') {
+                        emitPresentationEvent(cardState, { type: 'CHANGE', row: r, col: c, ownerBefore, ownerAfter });
+                    }
+                }
             }
             await waitMs(delay);
         }

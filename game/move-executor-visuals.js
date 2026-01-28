@@ -81,6 +81,11 @@ function getTurnTransitionGapMs() {
     return typeof val === 'number' ? val : getPhaseGapMs();
 }
 
+// Timers abstraction injection - use game/timers when available instead of raw setTimeout
+let timers = null;
+try { timers = require('../timers'); } catch (e) { /* ignore */ }
+const _waitMs = (ms) => (timers && typeof timers.waitMs === 'function') ? timers.waitMs(ms) : Promise.resolve();
+
 async function animateFlipsWithDeferredColor(flips, fromColor, toColor) {
     if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.animateFlipsWithDeferredColor === 'function') {
         return __uiImpl.animateFlipsWithDeferredColor(flips, fromColor, toColor);
@@ -93,6 +98,44 @@ async function animateRegenBack(regenedPositions, flipperColor) {
         return __uiImpl.animateRegenBack(regenedPositions, flipperColor);
     }
     return undefined;
+}
+
+// Game-side wrappers for common UI animations (safe no-op when UI not present)
+async function animateFadeOutAt(row, col, options) {
+    if (typeof __uiImpl_move_exec_visuals !== 'undefined' && __uiImpl_move_exec_visuals && typeof __uiImpl_move_exec_visuals.animateFadeOutAt === 'function') {
+        return __uiImpl_move_exec_visuals.animateFadeOutAt(row, col, options);
+    }
+    const delay = (options && options.durationMs) ? options.durationMs : 0;
+    return _waitMs(delay);
+}
+
+async function animateDestroyAt(row, col, options) {
+    if (typeof __uiImpl_move_exec_visuals !== 'undefined' && __uiImpl_move_exec_visuals && typeof __uiImpl_move_exec_visuals.animateDestroyAt === 'function') {
+        return __uiImpl_move_exec_visuals.animateDestroyAt(row, col, options);
+    }
+    const delay = (options && options.durationMs) ? options.durationMs : 0;
+    return _waitMs(delay);
+}
+
+async function animateHyperactiveMove(from, to, options) {
+    if (typeof __uiImpl_move_exec_visuals !== 'undefined' && __uiImpl_move_exec_visuals && typeof __uiImpl_move_exec_visuals.animateHyperactiveMove === 'function') {
+        return __uiImpl_move_exec_visuals.animateHyperactiveMove(from, to, options);
+    }
+    return Promise.resolve();
+}
+
+async function playDrawAnimation(player, drawnCardId) {
+    if (typeof __uiImpl_move_exec_visuals !== 'undefined' && __uiImpl_move_exec_visuals && typeof __uiImpl_move_exec_visuals.playDrawAnimation === 'function') {
+        return __uiImpl_move_exec_visuals.playDrawAnimation(player, drawnCardId);
+    }
+    return Promise.resolve();
+}
+
+async function updateDeckVisual() {
+    if (typeof __uiImpl_move_exec_visuals !== 'undefined' && __uiImpl_move_exec_visuals && typeof __uiImpl_move_exec_visuals.updateDeckVisual === 'function') {
+        return __uiImpl_move_exec_visuals.updateDeckVisual();
+    }
+    return Promise.resolve();
 }
 
 function applyPendingSpecialstoneVisual(move, pendingType) {
@@ -129,6 +172,11 @@ if (typeof module !== 'undefined' && module.exports) {
         getTurnTransitionGapMs,
         animateFlipsWithDeferredColor,
         animateRegenBack,
+        animateFadeOutAt,
+        animateDestroyAt,
+        animateHyperactiveMove,
+        playDrawAnimation,
+        updateDeckVisual,
         applyPendingSpecialstoneVisual,
         runMoveVisualSequence,
         // DI helpers
