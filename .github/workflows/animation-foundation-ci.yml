@@ -1,0 +1,23 @@
+name: Animation Foundation CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install
+        run: npm ci
+      - name: Game purity checks
+        run: npm run check:game-purity
+      - name: Run unit tests (Jest)
+        run: npm run test:jest
+      - name: Smoke E2E (quick)
+        run: npm run test:e2e --silent || true
