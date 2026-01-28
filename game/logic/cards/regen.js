@@ -97,7 +97,8 @@
                             gameState.board[p.row][p.col] = ownerColor;
                         }
                         clearBombAt(cardState, p.row, p.col);
-                        captureFlips.push(p);
+                        // Attach regen owner so pipeline can attribute charge correctly
+                        captureFlips.push({ row: p.row, col: p.col, owner: regen.owner });
                     }
                 }
             }

@@ -43,20 +43,44 @@ function setupDebugControls(debugModeBtn, humanVsHumanBtn, visualTestBtn) {
         });
     }
 
-    // Human vs Human Mode (debug subfeature)
+    // Human Play Mode control: cycle between 'black' (default), 'white', and 'both'.
+    // This replaces the older DEBUG_HUMAN_VS_HUMAN toggle with a clearer selector while
+    // maintaining backward compatibility by updating that flag when mode === 'both'.
     if (humanVsHumanBtn) {
-        humanVsHumanBtn.textContent = window.DEBUG_HUMAN_VS_HUMAN ? '人間vs人間: ON' : '人間vs人間: OFF';
-        humanVsHumanBtn.style.color = window.DEBUG_HUMAN_VS_HUMAN ? '#90ee90' : '#ffb366';
-        humanVsHumanBtn.addEventListener('click', () => {
-            window.DEBUG_HUMAN_VS_HUMAN = !window.DEBUG_HUMAN_VS_HUMAN;
-            humanVsHumanBtn.textContent = window.DEBUG_HUMAN_VS_HUMAN ? '人間vs人間: ON' : '人間vs人間: OFF';
-            humanVsHumanBtn.style.color = window.DEBUG_HUMAN_VS_HUMAN ? '#90ee90' : '#ffb366';
+        // Initialize global mode if not present
+        if (typeof window.HUMAN_PLAY_MODE === 'undefined') window.HUMAN_PLAY_MODE = 'black';
+        const modeToLabel = (mode) => {
+            if (mode === 'black') return '人間: 黒';
+            if (mode === 'white') return '人間: 白';
+            return '人間: 両方';
+        };
+        const modeToColor = (mode) => (mode === 'both') ? '#90ee90' : '#ffb366';
 
-            if (window.DEBUG_HUMAN_VS_HUMAN) {
-                addLog('🎮 人間vs人間モード: ON （黒白両方操作可能、手札は黒のみ使用）');
-            } else {
-                addLog('人間vs人間モード: OFF');
-            }
+        // Reflect any DI override
+        if (typeof __uiImpl_turn_manager !== 'undefined' && typeof __uiImpl_turn_manager.humanPlayMode === 'string') {
+            window.HUMAN_PLAY_MODE = __uiImpl_turn_manager.humanPlayMode;
+        }
+
+        humanVsHumanBtn.textContent = modeToLabel(window.HUMAN_PLAY_MODE);
+        humanVsHumanBtn.style.color = modeToColor(window.HUMAN_PLAY_MODE);
+
+        humanVsHumanBtn.addEventListener('click', () => {
+            const order = ['black', 'white', 'both'];
+            const currentIdx = order.indexOf(window.HUMAN_PLAY_MODE) >= 0 ? order.indexOf(window.HUMAN_PLAY_MODE) : 0;
+            const nextMode = order[(currentIdx + 1) % order.length];
+            window.HUMAN_PLAY_MODE = nextMode;
+            if (typeof __uiImpl_turn_manager !== 'undefined') __uiImpl_turn_manager.humanPlayMode = nextMode;
+            // Maintain backward-compatibility flag
+            window.DEBUG_HUMAN_VS_HUMAN = (nextMode === 'both');
+
+            humanVsHumanBtn.textContent = modeToLabel(nextMode);
+            humanVsHumanBtn.style.color = modeToColor(nextMode);
+
+            if (nextMode === 'both') addLog('🎮 人間: 両方 (黒白両方操作可能)');
+            else addLog('🎮 人間操作: ' + (nextMode === 'black' ? '黒' : '白'));
+
+            // Force a render update to refresh legal move hints
+            try { if (typeof emitBoardUpdate === 'function') emitBoardUpdate(); else if (typeof renderBoard === 'function') renderBoard(); } catch (e) { /* ignore */ }
         });
     }
 

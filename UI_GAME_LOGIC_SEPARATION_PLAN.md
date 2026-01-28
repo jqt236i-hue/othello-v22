@@ -45,6 +45,7 @@
 
 - 既存: `npm run check:game-purity`, `npm run check:ui-writers`, `npm test`
 - 追加: `game/**` から UI関数参照を禁止するチェックを導入
+- 追加: `game/**` から時間API（`Date`, `performance`, `setTimeout`, `setInterval`, `requestAnimationFrame`）および `Math.random()` の使用を禁止するチェックを導入
 
 ---
 
@@ -54,7 +55,7 @@
 
 1) UIが入力から `action` を生成
 2) UIが `TurnPipeline.applyTurnSafe(...)` を呼ぶ
-3) `Result` を state store に採用する（ここまでがルール側の責務）
+3) 状態管理レイヤーが `Result` を state store に適用する（UIは state を直接変更しない／ここまでがルール側の責務）
 4) 表示層（UI＋アニメーション）が `presentationEvents[]` を再生する（ここから先が表示側の責務）
 
 ### 3.2 命名規約（重要）
@@ -102,6 +103,9 @@
 
 目標:
 - UIがstate diffや暗黙のルールを推測しない状態にする
+
+互換/移行:
+- 既存のUI補完はイベント拡充が終わるまで段階的に残し、互換レイヤーで吸収して段階的に新スキーマへ移行する。互換期間終了後に旧形式を削除する手順を明記する
 
 実行項目:
 - `events[]` / `presentationEvents[]` の「UIが必要な最終情報」を統一定義する
@@ -168,5 +172,5 @@
 
 ## 7. 次の一手（推奨）
 
-- まずPhase 1の「分類表」を作る（これが計画の要）
-- 次にPhase 0の追加ゲートを入れる（悪化を止める）
+- まずPhase 0の追加ゲートを入れる（悪化を止める）
+- 次にPhase 1の「分類表」を作る（これが計画の要）

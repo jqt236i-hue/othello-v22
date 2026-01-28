@@ -81,7 +81,7 @@ function getTurnTransitionGapMs() {
     return typeof val === 'number' ? val : getPhaseGapMs();
 }
 
-// Timers abstraction injection - use game/timers when available instead of raw setTimeout
+// Timers abstraction injection - use game/timers when available (avoid raw timing API usage)
 let timers = null;
 try { timers = require('../timers'); } catch (e) { /* ignore */ }
 const _waitMs = (ms) => (timers && typeof timers.waitMs === 'function') ? timers.waitMs(ms) : Promise.resolve();

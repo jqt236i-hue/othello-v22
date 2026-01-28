@@ -22,6 +22,7 @@
     "check:game-window": "node scripts/check_game_no_window.js",
     "check:game-time": "node scripts/check_game_no_time_api.js",
     "check:game-ui-import": "node scripts/check_game_no_ui_import.js",
+    "check:animation-refs": "node scripts/check_ui_direct_refs.js",
     "check:rule-purity": "node scripts/check_rule_no_time_random.js",
     "check:no-json-clone": "node scripts/check_no_json_clone.js",
     "check:game-purity": "npm run check:game-dom && npm run check:game-window && npm run check:game-time && npm run check:game-ui-import && npm run check:rule-purity && npm run check:no-json-clone",
@@ -32,7 +33,8 @@
     "test:jest:coverage": "jest --runInBand --coverage",
     "test:jest:noanim": "NOANIM=1 jest --runInBand",
     "test:jest:noanim:coverage": "NOANIM=1 jest --runInBand --coverage",
-    "smoke:ui-di": "node scripts/smoke_ui_di.js"
+    "smoke:ui-di": "node scripts/smoke_ui_di.js",
+    "smoke:auto-ui": "node scripts/smoke_auto_ui.js"
   },
   "keywords": [],
   "author": "",

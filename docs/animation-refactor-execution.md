@@ -58,6 +58,27 @@
 
 ## 実行手順（小PRで段階的）
 
+---
+
+## 進捗（現時点）
+- ステータス: **90% 完了** ✅ (ローカル作業完了。残り: CI gate と visual E2E の統合、リモート PR 作成)
+- 実施済み:
+  - `CHANGE` -> `flip` のマッピング修正（`game/turn/pipeline_ui_adapter.js`）
+  - タイマーの抽象化を利用するようにフォールバック改修（`game/move-executor-visuals.js`）
+  - UI 側アニメ API 土台の追加（`ui/animation-api.js` シム）
+  - 特殊効果（`game/special-effects/*`）の UI 直接呼び出しを `presentationEvent` 発行へ置換（`hyperactive.js`, `dragons.js`）
+  - 単体テストの追加（`tests/unit/game/*`, `tests/unit/ui/*`）とローカルでのテスト実行パス
+  - 変更を `feature/animation-foundation` ブランチへコミット（ローカル）
+- 未完了:
+  - CI 上の gate 追加（`check:game-purity` / visual E2E gate）
+  - Visual E2E（visual-diff）テンプレと PR ワークフローの連携
+
+**注:** `animations/*` の Phase2 stub は削除済（ローカルコミット）。リモートへ push して PR を作成してください。
+
+---
+
+
+
 ### PR0: 棚卸し（ドキュメントのみ）
 目的: どれが “現役のアニメ基盤” で、どれが “残骸” かを明文化。
 - 追記する内容（この計画書に追記でOK）

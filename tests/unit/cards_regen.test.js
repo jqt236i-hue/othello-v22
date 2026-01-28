@@ -22,8 +22,8 @@ describe('REGEN helpers', () => {
 
         const res = CardRegen.applyRegenAfterFlips(cs, gs, [{ row: 1, col: 1 }], 'white', false);
         expect(res.regened).toEqual([{ row: 1, col: 1 }]);
-        // capture flips should include [1,2]
-        expect(res.captureFlips).toContainEqual({ row: 1, col: 2 });
+        // capture flips should include [1,2] (owner may be included)
+        expect(res.captureFlips.some(f => f.row === 1 && f.col === 2)).toBe(true);
         // board should have been reverted and captured cell set to black
         expect(gs.board[1][1]).toBe(1);
         expect(gs.board[1][2]).toBe(1);

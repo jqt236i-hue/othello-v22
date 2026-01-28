@@ -50,6 +50,9 @@ function handleCellClick(row, col) {
         });
     }
 
+    // Record recent human interaction time so Auto mode can avoid racing human intent
+    try { if (typeof globalThis !== 'undefined') globalThis.__lastHumanActionAt = Date.now(); else if (typeof global !== 'undefined') global.__lastHumanActionAt = Date.now(); } catch (e) { /* ignore */ }
+
 
 
     // Block while animations are running
@@ -82,8 +85,10 @@ function handleCellClick(row, col) {
         return;
     }
 
-    // Human move: BLACK always, or WHITE if DEBUG_HUMAN_VS_HUMAN is enabled
-    const isHumanTurn = (gameState.currentPlayer === BLACK) || ((__uiImpl_turn_manager && __uiImpl_turn_manager.DEBUG_HUMAN_VS_HUMAN) && gameState.currentPlayer === WHITE);
+    // Human move: respect UI-configured human play mode (values: 'black'|'white'|'both').
+    // Backward compat: fall back to DEBUG_HUMAN_VS_HUMAN boolean which means 'both'.
+    const humanPlayMode = (__uiImpl_turn_manager && typeof __uiImpl_turn_manager.humanPlayMode === 'string') ? __uiImpl_turn_manager.humanPlayMode : ((typeof __uiImpl_turn_manager !== 'undefined' && __uiImpl_turn_manager.DEBUG_HUMAN_VS_HUMAN) ? 'both' : (typeof globalThis !== 'undefined' && globalThis.HUMAN_PLAY_MODE ? globalThis.HUMAN_PLAY_MODE : 'black'));
+    const isHumanTurn = (gameState.currentPlayer === BLACK && (humanPlayMode === 'black' || humanPlayMode === 'both')) || (gameState.currentPlayer === WHITE && (humanPlayMode === 'white' || humanPlayMode === 'both'));
     if (!isHumanTurn) return;
 
     const protection = getActiveProtectionForPlayer(gameState.currentPlayer);
@@ -320,14 +325,20 @@ async function onTurnStart(player) {
                         cardState.presentationEvents.push({ type: 'DRAW_CARD', player: playerKey, cardId: drawnCardId });
                     }
                 } catch (e) { /* do not break turn if presentation hook fails */ }
-                if (typeof updateDeckVisual === 'function') updateDeckVisual();
+                // Delegate to game-side visual wrapper (safe no-op when UI not present)
+                try {
+                    const mv = require('../move-executor-visuals');
+                    if (mv && typeof mv.updateDeckVisual === 'function') await mv.updateDeckVisual();
+                } catch (e) { /* ignore in non-UI env */ }
                 const isHidden = (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.isDocumentHidden === 'function') ?
                     __uiImpl.isDocumentHidden() : (typeof __uiImpl !== 'undefined' && __uiImpl && __uiImpl.__BACKGROUND_MODE__ === true);
 
                 if (!isHidden) {
-                    if (typeof playDrawAnimation === 'function') {
-                        await playDrawAnimation(player, drawnCardId);
-                    }
+                    // Delegate to game-side visual wrapper (safe no-op when UI not present)
+                    try {
+                        const mv = require('../move-executor-visuals');
+                        if (mv && typeof mv.playDrawAnimation === 'function') await mv.playDrawAnimation(player, drawnCardId);
+                    } catch (e) { /* ignore in non-UI env */ }
 
                     // Deck pulse: delegate to UI for visual feedback
                     if (typeof __uiImpl !== 'undefined' && __uiImpl && typeof __uiImpl.pulseDeckUI === 'function') {

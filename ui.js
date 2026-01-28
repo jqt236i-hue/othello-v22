@@ -116,8 +116,10 @@ function renderBoard() {
     const selectableTargets = CardLogic.getSelectableTargets
         ? CardLogic.getSelectableTargets(cardState, gameState, playerKey) : [];
     const selectableTargetSet = new Set(selectableTargets.map(p => p.row + ',' + p.col));
-    // Human move hints: BLACK always, WHITE only when DEBUG_HUMAN_VS_HUMAN is enabled
-    const isHumanTurn = (player === BLACK) || (window.DEBUG_HUMAN_VS_HUMAN && player === WHITE);
+    // Human move hints: respect UI-configured human play mode (values: 'black'|'white'|'both')
+    // Backward compat: fall back to window.DEBUG_HUMAN_VS_HUMAN boolean which means 'both'.
+    const humanPlayMode = (typeof __uiImpl_turn_manager !== 'undefined' && typeof __uiImpl_turn_manager.humanPlayMode === 'string') ? __uiImpl_turn_manager.humanPlayMode : ((typeof window !== 'undefined' && window.HUMAN_PLAY_MODE) ? window.HUMAN_PLAY_MODE : (window.DEBUG_HUMAN_VS_HUMAN ? 'both' : 'black'));
+    const isHumanTurn = (player === BLACK && (humanPlayMode === 'black' || humanPlayMode === 'both')) || (player === WHITE && (humanPlayMode === 'white' || humanPlayMode === 'both'));
     const showLegalHints = isHumanTurn && !isSelectingTarget;
 
     // Build unified specialStones map

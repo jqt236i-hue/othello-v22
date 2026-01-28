@@ -8,6 +8,10 @@ if (typeof require === 'function') {
 }
 
 async function processCpuTurn() {
+    if (typeof gameState !== 'undefined' && gameState && gameState.currentPlayer !== WHITE) {
+        console.log('[CPU] processCpuTurn skipped: not WHITE turn');
+        return;
+    }
     console.log('[DEBUG][processCpuTurn] enter', { isProcessing, isCardAnimating, gameStateCurrentPlayer: gameState && gameState.currentPlayer });
     runCpuTurn('white');
     console.log('[DEBUG][processCpuTurn] exit');
@@ -16,9 +20,20 @@ async function processCpuTurn() {
 async function processAutoBlackTurn() {
     // Re-enabled for Auto mode: invoke black run with autoMode flag
     if (isProcessing || isCardAnimating) return;
-    if (gameState.currentPlayer !== BLACK) return;
+    if (typeof gameState !== 'undefined' && gameState && gameState.currentPlayer !== BLACK) {
+        console.log('[CPU] processAutoBlackTurn skipped: not BLACK turn');
+        return;
+    }
     return runCpuTurn('black', { autoMode: true });
 }
+
+// Browser exposure
+if (typeof globalThis !== 'undefined') {
+    globalThis.processCpuTurn = processCpuTurn;
+    globalThis.processAutoBlackTurn = processAutoBlackTurn;
+    globalThis.runCpuTurn = runCpuTurn;
+}
+
 
 async function runCpuTurn(playerKey, { autoMode = false } = {}) {
     const isWhite = playerKey === 'white';
@@ -155,4 +170,12 @@ async function runCpuTurn(playerKey, { autoMode = false } = {}) {
         addLog(`${selfName}の思考中にエラーが発生しました`);
     }
 }
+
 })();
+
+// Export symbols for use by other modules
+if (typeof module !== 'undefined' && module.exports) {
+    try {
+        module.exports = { processCpuTurn, processAutoBlackTurn, runCpuTurn };
+    } catch (e) { /* defensive: running in non-CommonJS env */ }
+}

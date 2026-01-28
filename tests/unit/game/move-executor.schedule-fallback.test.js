@@ -59,6 +59,9 @@ describe('move-executor CPU scheduling fallback', () => {
 
         const p = ME.executeMoveViaPipeline(move, false, 'black');
 
+        // Wait for pipeline processing to complete so presentation events are available
+        await p;
+
         // processCpuTurn should not have been called immediately
         expect(global.processCpuTurn).not.toHaveBeenCalled();
 
@@ -67,6 +70,9 @@ describe('move-executor CPU scheduling fallback', () => {
         const sched = (global.cardState.presentationEvents || []).find(e => e.type === 'SCHEDULE_CPU_TURN');
         expect(sched).toBeDefined();
         expect(sched.delayMs).toBe(global.CPU_TURN_DELAY_MS);
+
+        // Fallback must trigger a board update so UI can consume SCHEDULE_CPU_TURN
+        expect(global.emitBoardUpdate).toHaveBeenCalled();
 
         // Simulate UI scheduler honoring the presentation event (UI-side timer)
         // The UI would call scheduleCpuTurn(delay, callback) or call processCpuTurn after delay.
@@ -85,6 +91,6 @@ describe('move-executor CPU scheduling fallback', () => {
         expect(global.processCpuTurn).toHaveBeenCalled();
 
         logSpy.mockRestore(); warnSpy.mockRestore();
-        await p; // await completion to avoid leaking promises
+
     });
 });
