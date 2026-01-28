@@ -3,6 +3,9 @@ name: Visual E2E (non-blocking)
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - feature/visual-e2e-ci
 
 jobs:
   visual-e2e:
