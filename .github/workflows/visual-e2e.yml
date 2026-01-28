@@ -1,0 +1,52 @@
+name: Visual E2E (non-blocking)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  visual-e2e:
+    name: Visual E2E (create baseline/non-blocking)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run visual presentation check
+        run: |
+          # Run visual check script. It will create baseline (exit 2) or fail on diff (exit 1)
+          npm run test:e2e:present-visual || echo "VISUAL_EXIT=$?" > visual_exit_code.txt || true
+
+      - name: Upload visual artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-artifacts
+          path: artifacts/visual_presentation
+
+      - name: Evaluate visual result
+        run: |
+          if [ -f visual_exit_code.txt ]; then
+            code=$(cat visual_exit_code.txt | sed 's/VISUAL_EXIT=//')
+            echo "Visual script exit code: $code"
+            if [ "$code" = "1" ]; then
+              echo "::error::Visual comparison failed (diff available in artifacts)"
+              exit 1
+            elif [ "$code" = "2" ]; then
+              echo "::notice::Baseline image created (please review and commit baseline)."
+              exit 0
+            else
+              echo "::notice::Visual script exited with code $code"
+              exit 0
+            fi
+          else
+            echo "::notice::Visual script completed (no special exit code file found)."
+          fi
