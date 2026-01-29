@@ -1,0 +1,30 @@
+Flip変更の証拠提出（テンプレ）
+
+目的:
+- 「本当に差分があるか」「どのファイルが変わったか」「push/PRが実在するか」を短時間で確認する。
+- テストは実行しない（提案→承認→実行のため）。
+
+提出するコマンド出力（そのまま貼る）
+
+1) ブランチ/作業状態
+- git status
+
+- git branch --show-current
+
+2) コミット履歴（直近）
+- git log -3 --name-status
+
+3) 変更一覧（mainとの差分）
+- git diff --name-status main...HEAD
+
+4) 重要ファイルの差分（必須）
+- git diff main...HEAD -- game/turn/pipeline_ui_adapter.js ui/animation-engine.js styles-animations.css
+
+5) リモート情報（pushの裏付け）
+- git remote -v
+
+- git ls-remote --heads origin feature/flip-implementation
+
+注意:
+- ここではテストを回さない。テスト結果の記載は不要。
+- `pipeline_ui_adapter.js` の CHANGE→flip マップが「mainにも存在」と主張する場合、該当行のdiffまたは該当箇所の抜粋も添える。
