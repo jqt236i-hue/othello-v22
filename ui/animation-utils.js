@@ -119,10 +119,15 @@ function animateFadeOutAt(row, col, options) {
         void disc.offsetWidth;
 
         let resolved = false;
+        let timerId = null;
         const safeResolve = () => {
             if (resolved) return;
             resolved = true;
             disc.removeEventListener('animationend', onEnd);
+            if (timerId !== null) {
+                try { _Timer().clearTimeout(timerId); } catch (e) {}
+                timerId = null;
+            }
             if (createdGhost && disc.parentElement) {
                 disc.parentElement.removeChild(disc);
             }
@@ -141,8 +146,9 @@ function animateFadeOutAt(row, col, options) {
             return;
         }
 
-        // Safety timeout (1s)
-        const timerId = _Timer().setTimeout(safeResolve, 1000);
+        // Safety timeout (DESTROY_FADE_MS + 200ms)
+        const fadeMs = (typeof SharedConstants !== 'undefined' && SharedConstants.DESTROY_FADE_MS) ? SharedConstants.DESTROY_FADE_MS : ((typeof window !== 'undefined' && window.DESTROY_FADE_MS) ? window.DESTROY_FADE_MS : 300);
+        timerId = _Timer().setTimeout(safeResolve, fadeMs + 200);
     });
 }
 
@@ -198,10 +204,15 @@ function animateStrongWillApply(row, col) {
  * @param {Function} onComplete - 完了コールバック
  */
 function playHandAnimation(player, row, col, onComplete) {
+    const unlockProcessing = () => {
+        if (typeof window !== 'undefined') window.isProcessing = false; else isProcessing = false;
+    };
     if (typeof window !== 'undefined') window.isProcessing = true; else isProcessing = true; // Lock interactions
 
     const targetCell = boardEl.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
     if (!targetCell) {
+        unlockProcessing();
+        if (typeof isCardAnimating !== 'undefined') isCardAnimating = false;
         onComplete();
         return;
     }
@@ -209,7 +220,7 @@ function playHandAnimation(player, row, col, onComplete) {
     // No-Animation: short-circuit to immediate completion without toggling isCardAnimating
     if (_isNoAnim()) {
         // Ensure processing isn't left locked and call onComplete synchronously
-        if (typeof window !== 'undefined') window.isProcessing = false; else isProcessing = false;
+        unlockProcessing();
         if (typeof isCardAnimating !== 'undefined') isCardAnimating = false;
         onComplete();
         return;
@@ -307,6 +318,7 @@ function playHandAnimation(player, row, col, onComplete) {
                     handAnimationTimeout = null;
                 }
                 if (typeof isCardAnimating !== 'undefined') isCardAnimating = false;
+                unlockProcessing();
             };
         };
     };

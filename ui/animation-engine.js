@@ -66,6 +66,13 @@
          * @returns {Promise<void>}
          */
         async play(events) {
+            // No events: just ensure flags are clean and return.
+            if (!events || events.length === 0) {
+                this.setGlobalInteractionLock(false);
+                if (typeof window !== 'undefined') window.VisualPlaybackActive = false;
+                return;
+            }
+
             if (this.isPlaying) {
                 console.warn('[AnimationEngine] Already playing. Aborting previous...');
                 this.isAborted = true;
@@ -108,7 +115,15 @@
 
                     // Gap between readable phases (Section 3)
                     if (phase !== sortedPhases[sortedPhases.length - 1]) {
-                        await this._sleep(PHASE_GAP_MS);
+                        // Avoid a noticeable delay between "place/spawn" and immediate flips.
+                        // Visually, flips should start as soon as possible after the move is applied.
+                        const nextPhaseKey = sortedPhases[sortedPhases.indexOf(phase) + 1];
+                        const nextEvents = phases[nextPhaseKey] || [];
+                        const hasPlaceOrSpawn = phaseEvents.some(e => e && (e.type === EVENT_TYPES.PLACE || e.type === EVENT_TYPES.SPAWN));
+                        const nextHasFlip = nextEvents.some(e => e && e.type === EVENT_TYPES.FLIP);
+                        if (!(hasPlaceOrSpawn && nextHasFlip)) {
+                            await this._sleep(PHASE_GAP_MS);
+                        }
                     }
                 }
             } catch (err) {
@@ -128,6 +143,9 @@
                 this.isPlaying = false;
                 this.setGlobalInteractionLock(false);
                 window.VisualPlaybackActive = false;
+                // After playback completes, request a final board diff render to ensure DOM matches state.
+                // This avoids stale visuals when diff rendering was suppressed during playback.
+                try { if (typeof emitBoardUpdate === 'function') emitBoardUpdate(); } catch (e) { /* ignore */ }
             }
         }
 
@@ -141,9 +159,13 @@
         }
 
         async executePhase(phaseEvents) {
-            // Group further by (type, batchKey) to run concurrently within a phase
-            // For simplicity, we run all events in a phase concurrently unless otherwise specified.
-            const promises = phaseEvents.map(ev => this.executeEvent(ev));
+            // Batch flip events within the same phase so that multiple flips animate together.
+            const flips = phaseEvents.filter(ev => ev && ev.type === EVENT_TYPES.FLIP);
+            const nonFlips = phaseEvents.filter(ev => !ev || ev.type !== EVENT_TYPES.FLIP);
+
+            const promises = [];
+            if (flips.length) promises.push(this.executeFlipBatch(flips));
+            if (nonFlips.length) promises.push(...nonFlips.map(ev => this.executeEvent(ev)));
             await Promise.all(promises);
         }
 
@@ -233,7 +255,8 @@
                 disc.classList.remove('stone-hidden-all');
                 // FADE_IN_MS is handled by CSS transition on .disc
             }
-            return this._sleep(FADE_IN_MS);
+            // Do not block subsequent phases (e.g., immediate flips) on fade-in.
+            return Promise.resolve();
         }
 
         async handleFlip(ev) {
@@ -244,27 +267,48 @@
 
                 const after = t.after || {};
 
-                // Section 1.4 "Spec B": Swap visuals immediately, then motion.
+                // More natural flip: animate immediately and swap the visual state at mid-flip.
+                // This makes the color change feel simultaneous with the flip motion.
+                if (_isNoAnim()) {
+                    this.syncDiscVisual(disc, after);
+                    try { disc.classList.remove('flip'); } catch (e) { }
+                    return;
+                }
+
+                // Best-effort: set a "before" visual if the payload provides it.
+                // If not provided, keep the current DOM visual as-is.
+                try {
+                    if (t.ownerBefore === 'black' || t.ownerBefore === 'white') {
+                        const before = { color: (t.ownerBefore === 'black') ? 1 : -1, special: t.specialBefore || null, timer: t.timerBefore || null };
+                        this.syncDiscVisual(disc, before);
+                    }
+                } catch (e) { /* ignore */ }
+
+                // Trigger flip animation immediately
+                try { disc.classList.remove('flip'); disc.offsetHeight; disc.classList.add('flip'); } catch (e) { /* defensive */ }
+
+                // Swap visuals exactly mid-way so color change aligns with motion start
+                await this._sleep(FLIP_MS / 2);
                 this.syncDiscVisual(disc, after);
 
-                // Trigger flip animation: remove any previous, force reflow, then add
-                try {
-                    disc.classList.remove('flip');
-                    disc.offsetHeight; // reset animation
-                    if (!_isNoAnim()) {
-                        disc.classList.add('flip');
-                    }
-                } catch (e) { /* defensive: ignore */ }
-
-                // Wait for flip animation to complete (no-op in NOANIM)
-                const res = await this._sleep(FLIP_MS);
-
-                // Ensure flip class is removed so it can be re-added on next flip
+                // Finish motion and clean up
+                await this._sleep(FLIP_MS / 2);
                 try { disc.classList.remove('flip'); } catch (e) { }
-
-                return res;
             });
             await Promise.all(promises);
+        }
+
+        // Batch handler so that multiple flips in the same phase animate simultaneously
+        async executeFlipBatch(flipEvents) {
+            const allTargets = [];
+            for (const ev of flipEvents) {
+                for (const t of ev.targets || []) {
+                    allTargets.push(t);
+                }
+            }
+            if (!allTargets.length) return;
+            // Reuse handleFlip logic with a synthetic event that contains all targets
+            await this.handleFlip({ targets: allTargets });
         }
 
         async handleDestroy(ev) {
@@ -273,9 +317,14 @@
                 const disc = cell?.querySelector('.disc');
                 if (!disc) return;
 
-                // Section 5.3: Fade out, fixed geometry, then remove.
-                disc.classList.add('destroy-fade');
-                await this._sleep(FADE_OUT_MS);
+                // Section 5.3: Fade out using animateFadeOutAt (waits for animationend + safety timeout)
+                if (typeof animateFadeOutAt === 'function') {
+                    await animateFadeOutAt(t.r, t.col);
+                } else {
+                    // Fallback: apply class and sleep
+                    disc.classList.add('destroy-fade');
+                    await this._sleep(FADE_OUT_MS);
+                }
                 cell.innerHTML = '';
             });
             await Promise.all(promises);
@@ -346,8 +395,7 @@
 
         async handleStatusChange(ev) {
             const promises = ev.targets.map(async t => {
-                const cell = this.getCellEl(t.r, t.col);
-                const disc = cell?.querySelector('.disc');
+                const disc = await this.waitForDisc(t.r, t.col, 4);
                 if (!disc) return;
 
                 const after = t.after || {};
@@ -362,6 +410,8 @@
                         newColor: after.color,
                         fadeIn: !!after.special
                     });
+                    // Ensure timer UI is updated immediately after status changes.
+                    this.syncDiscVisual(disc, after);
                 } else {
                     this.syncDiscVisual(disc, after);
                 }
@@ -373,6 +423,24 @@
 
         getCellEl(r, c) {
             return this.boardEl.querySelector(`.cell[data-row="${r}"][data-col="${c}"]`);
+        }
+
+        async waitForDisc(r, c, attempts) {
+            let remaining = Number.isFinite(attempts) ? attempts : 1;
+            while (remaining > 0) {
+                const cell = this.getCellEl(r, c);
+                const disc = cell ? cell.querySelector('.disc') : null;
+                if (disc) return disc;
+                remaining -= 1;
+                await new Promise(resolve => {
+                    try {
+                        requestAnimationFrame(() => setTimeout(resolve, 0));
+                    } catch (e) {
+                        setTimeout(resolve, 0);
+                    }
+                });
+            }
+            return null;
         }
 
         createDisc(state) {
@@ -391,7 +459,8 @@
             if (state.special) {
                 const effectKey = window.getEffectKeyForSpecialType(state.special);
                 if (window.applyStoneVisualEffect && effectKey) {
-                    window.applyStoneVisualEffect(disc, effectKey, { owner: state.color });
+                    const ownerVal = (state.owner !== undefined && state.owner !== null) ? state.owner : state.color;
+                    window.applyStoneVisualEffect(disc, effectKey, { owner: ownerVal });
                 }
             } else {
                 // Clear all special icons

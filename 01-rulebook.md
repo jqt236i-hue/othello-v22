@@ -50,12 +50,13 @@ EMPTY（空）
 
 2.5 パス（Pass）
 
-自分の手番で合法手が 1 つも無い場合、必ずパスする。
+自分の手番で「カード使用後でも合法手が 1 つも無い」場合、必ずパスする。
+カードが使用可能な場合は、カード使用を先に検討する。
 パスは「手番が来た回数」としてカウントされる。
 
 2.6 詰み（Stalemate）
 
-両者とも合法手が存在しない状態。
+両者とも「カード使用後でも合法手が存在しない」状態。
 実際の進行としては「A がパス → B もパス」という連続パスで発生する。
 
 3. 盤・初期設定
@@ -197,7 +198,7 @@ PermaProtected は Protected の永続版：
 
 通常：合法手から 1 マス選んで配置
 
-合法手が無い：必ずパス
+カード使用後でも合法手が無い：必ずパス
 
 FREE_PLACEMENT 中：空きマスなら任意配置可（反転 0 も可）
 
@@ -267,7 +268,7 @@ DOUBLE_PLACE が有効なターンは、1 ターンに最大 2 回配置でき�
 
 盤面が埋まる（EMPTY が 0）
 
-詰み：両者とも合法手が存在しない（連続パス状態）
+詰み：両者とも「カード使用後でも合法手が存在しない」（連続パス状態）
 
 9.3 勝敗決定
 
@@ -330,7 +331,7 @@ Protected / PermaProtected でも破壊可能
 
 配置時の反転は通常通り発生する
 
-置いたマスは 直後に EMPTY に戻る（石が残らない）
+置いたマスは **次の相手のターン開始時** に EMPTY に戻る（石が残るのはそのターンのみ）
 
 そのターンに獲得するチャージ（反転枚数合計）を 4倍にする
 
@@ -340,7 +341,7 @@ Protected / PermaProtected でも破壊可能
 
 配置時の反転は通常通り発生する
 
-置いたマスは 直後に EMPTY に戻る（石が残らない）
+置いたマスは **次の相手のターン開始時** に EMPTY に戻る（石が残るのはそのターンのみ）
 
 そのターンに獲得するチャージ（反転枚数合計）を 3倍にする
 
@@ -669,7 +670,7 @@ Notes:
 - PHASE_GAP_MS = 200                 (gap between readable phases)
 - TURN_TRANSITION_GAP_MS = 200       (gap between "placement resolution" and next turn-start effects)
 - FADE_IN_MS = 300                   (spawn / appear)
-- FADE_OUT_MS = 300                  (destroy / disappear)
+- FADE_OUT_MS = 500                  (destroy / disappear)
 - OVERLAY_CROSSFADE_MS = 600         (true cross-fade duration)
 - MOVE_MS = 300                      (default straight-line move)
 
@@ -805,3 +806,5 @@ Readability:
 - TIME_BOMB explosion shows bomb first, then surrounding stones.
 - Target selection highlights do not modify disc appearance.
 - No mid-playback full rerender; no UI diff inference of missing events.
+
+

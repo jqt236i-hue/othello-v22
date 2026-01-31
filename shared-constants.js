@@ -171,6 +171,10 @@
     // TIME BOMB default turns
     const TIME_BOMB_TURNS = 3;
 
+    // Destroy fade duration (ms)
+    // Used by UI animation utilities to align JS waiting with CSS animation time
+    const DESTROY_FADE_MS = 500;
+
     // ===== EXPORT =====
     const exports = {
         // Board constants
@@ -188,6 +192,7 @@
         MAX_SWAP_TARGETS: 6,
         MAX_DESTROY_TARGETS: 8,
         TIME_BOMB_TURNS: TIME_BOMB_TURNS,
+        DESTROY_FADE_MS: DESTROY_FADE_MS,
     };
 
     // Also expose key constants directly on global scope for legacy compatibility
@@ -201,6 +206,7 @@
         window.CARD_TYPES = CARD_TYPES;
         window.DEBUG_MODE = DEBUG_MODE;
         window.TIME_BOMB_TURNS = TIME_BOMB_TURNS;
+        window.DESTROY_FADE_MS = DESTROY_FADE_MS;
     }
 
     return exports;

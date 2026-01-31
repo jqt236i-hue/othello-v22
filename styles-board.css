@@ -20,6 +20,12 @@
         100% 100%;
 }
 
+/* Disable interactions during active playback */
+#board.playback-locked {
+    pointer-events: none;
+    cursor: not-allowed;
+}
+
 :root {
     --stone-crossfade-ms: 600ms;
 }
@@ -186,8 +192,24 @@
 }
 
 .disc.bomb {
-    border: 2px dashed rgba(255, 100, 0, 0.6) !important;
-    box-shadow: 0 0 8px rgba(255, 100, 0, 0.4) !important;
+    /* Use image-based special stone visuals for bombs */
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.disc.bomb.bomb-black {
+    --special-stone-image: url('assets/images/stones/TIME_BOMB-black.png');
+}
+
+.disc.bomb.bomb-white {
+    --special-stone-image: url('assets/images/stones/TIME_BOMB-white.png');
+}
+
+.disc.time-bomb-stone {
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 
 .bomb-icon {
@@ -304,7 +326,7 @@
 
 /* Stone destruction fade-out animation */
 .disc.destroy-fade {
-    animation: fadeOutDestroy 0.3s ease-out forwards !important;
+    animation: fadeOutDestroy 0.5s ease-out forwards !important;
 }
 
 /* When selecting a target for a card, "placeable move" markers must not appear. */
@@ -336,6 +358,13 @@
 
     100% {
         opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .disc.destroy-fade {
+        animation: none !important;
+        opacity: 0 !important;
     }
 }
 
