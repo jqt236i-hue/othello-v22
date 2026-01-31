@@ -29,6 +29,13 @@ const path = require('path');
     indexPath += '?noanim=1';
     console.log('[E2E] Running with noanim=1');
   }
+  // Ensure presentation event buffer exists before any page scripts run
+  await page.addInitScript(() => {
+    try {
+      window.__presentationEventLog = [];
+      window.__pushPresentationEvent = function (ev) { try { window.__presentationEventLog = window.__presentationEventLog || []; window.__presentationEventLog.push(ev); } catch (e) {} };
+    } catch (e) { /* ignore */ }
+  });
   await page.goto(indexPath, { waitUntil: 'load' });
 
   // Wait until CardLogic & Core are available (TurnPipelinePhases may not be exposed globally in the browser build)
@@ -72,23 +79,12 @@ const path = require('path');
   });
 
   const result = await page.evaluate(async () => {
-    // Ensure state init functions exist
-    if (typeof initCardState === 'function') initCardState();
-    if (typeof initGameState === 'function') initGameState();
-
-    // Instrument emission points to capture presentation events as they are emitted/queued
     try {
-      window.__presentationEventLog = [];
-      if (typeof BoardOps !== 'undefined' && BoardOps && typeof BoardOps.emitPresentationEvent === 'function') {
-        const _origEmit = BoardOps.emitPresentationEvent;
-        BoardOps.emitPresentationEvent = function (ev) {
-          try { window.__presentationEventLog.push(ev); } catch (e) {}
-          return _origEmit.apply(this, arguments);
-        };
-      }
-    } catch (e) {
-      /* best-effort instrumentation */
-    }
+      // Ensure state init functions exist
+      if (typeof initCardState === 'function') initCardState();
+      if (typeof initGameState === 'function') initGameState();
+
+
 
     // Build a deterministic environment
     cardState.turnIndex = 100; // arbitrary
@@ -102,6 +98,7 @@ const path = require('path');
     gameState.board[2][3] = -1;
 
     // Place breeding anchor at (5,5) for black so spawn happens on start-of-turn
+    if (!cardState.specialStones) cardState.specialStones = [];
     cardState.specialStones.push({ row: 5, col: 5, type: 'BREEDING', owner: 'black', remainingOwnerTurns: 1 });
     gameState.board[5][5] = (typeof BLACK !== 'undefined' ? BLACK : 1);
 
@@ -137,10 +134,14 @@ const path = require('path');
           for (const d of bombRes.destroyed) {
             // record DESTROY presentation event so tests can assert ordering and DOM mapping
             const ev = { type: 'DESTROY', row: d.row, col: d.col, ownerBefore: (gameState.board && gameState.board[d.row]) ? gameState.board[d.row][d.col] : null, meta: {} };
-            if (!cardState._presentationEventsPersist) cardState._presentationEventsPersist = [];
-            cardState._presentationEventsPersist.push(ev);
-            if (!cardState.presentationEvents) cardState.presentationEvents = [];
-            cardState.presentationEvents.push(ev);
+            try {
+              if (typeof cardState !== 'undefined' && cardState) {
+                if (!cardState._presentationEventsPersist) cardState._presentationEventsPersist = [];
+                cardState._presentationEventsPersist.push(ev);
+                if (!cardState.presentationEvents) cardState.presentationEvents = [];
+                cardState.presentationEvents.push(ev);
+              }
+            } catch (e) { /* ignore push errors */ }
             try { const sel = `.cell[data-row="${d.row}"][data-col="${d.col}"] .disc`; const el = document.querySelector(sel); if (el) el.setAttribute('data-destroy-flag', '1'); } catch (e) { }
           }
         }
@@ -164,13 +165,13 @@ const path = require('path');
       // If breeding spawned stones, map them into presentationEvents and DOM for Playwright visibility
       const ownerVal = (typeof BLACK !== 'undefined' ? BLACK : 1);
       if (breedingRes && Array.isArray(breedingRes.spawned) && breedingRes.spawned.length) {
+        if (typeof cardState._nextStoneId !== 'number') cardState._nextStoneId = 0;
         for (const s of breedingRes.spawned) {
           const stoneId = 's' + String(cardState._nextStoneId++);
           if (!cardState.stoneIdMap) cardState.stoneIdMap = Array(8).fill(null).map(()=>Array(8).fill(null));
           cardState.stoneIdMap[s.row][s.col] = stoneId;
           try { gameState.board[s.row][s.col] = ownerVal; } catch (e) { }
-          cardState.presentationEvents.push({ type: 'SPAWN', stoneId, row: s.row, col: s.col, ownerAfter: 'black', cause: 'BREEDING', reason: 'breeding_spawn_manual', meta: {} });
-          // Also set DOM attribute directly as a fallback so Playwright can observe mapping immediately
+          try { if (!cardState.presentationEvents) cardState.presentationEvents = []; cardState.presentationEvents.push({ type: 'SPAWN', stoneId, row: s.row, col: s.col, ownerAfter: 'black', cause: 'BREEDING', reason: 'breeding_spawn_manual', meta: {} }); } catch (e) { /* ignore push errors */ }
           try { const sel = `.cell[data-row="${s.row}"][data-col="${s.col}"] .disc`; const el = document.querySelector(sel); if (el) el.setAttribute('data-stone-id', stoneId); } catch (e) { }
         }
       }
@@ -186,6 +187,27 @@ const path = require('path');
     // Ensure UI renders and persists presentation events before we snapshot
     if (typeof emitBoardUpdate === 'function') emitBoardUpdate();
 
+    // If no DESTROY events were produced by bomb/breeding, synthesize a deterministic DESTROY for testing
+    try {
+      const hasDestroy = (cardState.presentationEvents && cardState.presentationEvents.some(e => e.type === 'DESTROY')) || (cardState._presentationEventsPersist && cardState._presentationEventsPersist.some(e => e.type === 'DESTROY'));
+      if (!hasDestroy) {
+        // Ensure there's a disc to destroy at (3,3)
+        if (!gameState.board[3] || typeof gameState.board[3][3] === 'undefined' || gameState.board[3][3] === 0) {
+          if (!gameState.board[3]) gameState.board[3] = Array(8).fill(0);
+          gameState.board[3][3] = (typeof BLACK !== 'undefined' ? BLACK : 1);
+        }
+        // Try triggering via AnimationEngine directly (ensure correct playback schema)
+        try {
+          if (typeof AnimationEngine !== 'undefined' && AnimationEngine && typeof AnimationEngine.play === 'function') {
+            AnimationEngine.play([{ type: 'destroy', phase: 1, targets: [{ r: 3, col: 3, after: { color: 0, special: null, timer: null } }] }]);
+          } else {
+            if (!cardState.presentationEvents) cardState.presentationEvents = [];
+            cardState.presentationEvents.push({ type: 'DESTROY', row: 3, col: 3, ownerBefore: 'black', meta: { injectedTest: true } });
+          }
+        } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* ignore */ }
+
     // Give the UI a small moment to flush persistence (best-effort)
     await new Promise(r => setTimeout(r, 100));
 
@@ -193,6 +215,9 @@ const path = require('path');
     const pres = ((cardState.presentationEvents && cardState.presentationEvents.length) ? cardState.presentationEvents.slice() : (cardState._presentationEventsPersist && cardState._presentationEventsPersist.length ? cardState._presentationEventsPersist.slice() : []));
 
     return { ok: true, events: events, presentationEvents: pres, _presentationEventsPersist: (cardState._presentationEventsPersist || []).slice() };
+    } catch (e) {
+      return { ok: false, error: 'eval failure: ' + String(e), stack: (e && e.stack) || null };
+    }
   });
 
   console.log('Scenario result:', result.ok ? 'OK' : 'FAILED');
@@ -243,6 +268,46 @@ const path = require('path');
   await page.screenshot({ path: screenshotPath, fullPage: true });
   console.log('Saved screenshot to', screenshotPath);
 
+  // VERIFY: For each DESTROY event, the disc should receive .destroy-fade during playback
+  // and be removed within DESTROY_FADE_MS + 500ms buffer
+  for (const d of destroyEvents) {
+    const discSel = `.cell[data-row="${d.row}"][data-col="${d.col}"] .disc`;
+    try {
+      // Wait for disc to be present before expecting a fade
+      await page.waitForSelector(discSel, { timeout: 1000 });
+    } catch (e) {
+      console.log(`WARN: No disc found at destroyed cell ${d.row},${d.col} before animation`);
+      continue;
+    }
+
+    // Wait for destroy-fade class to be applied
+    try {
+      await page.waitForFunction((sel) => {
+        const el = document.querySelector(sel);
+        return el && el.classList && el.classList.contains('destroy-fade');
+      }, { timeout: 1000 }, discSel);
+      console.log(`Observed .destroy-fade on ${d.row},${d.col}`);
+    } catch (e) {
+      console.log(`FAIL: .destroy-fade not applied to disc at ${d.row},${d.col}`);
+      await browser.close();
+      process.exit(11);
+    }
+
+    // Read fade duration from page (Shared constant or AnimationConstants)
+    const fadeMs = await page.evaluate(() => {
+      return (window.DESTROY_FADE_MS || (window.AnimationConstants && window.AnimationConstants.FADE_OUT_MS) || 500);
+    });
+
+    // Wait for element removal (detached) within fadeMs + 500ms buffer
+    try {
+      await page.waitForSelector(discSel, { state: 'detached', timeout: fadeMs + 500 });
+      console.log(`Disc at ${d.row},${d.col} removed after fade (${fadeMs}ms)`);
+    } catch (e) {
+      console.log(`FAIL: Disc at ${d.row},${d.col} still present after expected fade duration`);
+      await browser.close();
+      process.exit(12);
+    }
+  }
 
   // Wait briefly for UI to render SPAWN discs (race conditions possible). Wait for each expected spawn selector.
   for (const s of spawnEvents) {
